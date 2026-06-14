@@ -1,0 +1,744 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="colors_and_type.css"/>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  ::-webkit-scrollbar { width: 11px; height: 11px; }
+  ::-webkit-scrollbar-thumb { background: var(--gray-300); border-radius: 999px; border: 3px solid transparent; background-clip: content-box; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--gray-400); background-clip: content-box; }
+  ::-webkit-scrollbar-track { background: transparent; }
+</style>
+</helmet>
+
+<div style="{{ rootStyle }}">
+
+  <!-- ===================== TOPBAR ===================== -->
+  <div style="height:58px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 20px;background:#fff;border-bottom:1px solid var(--gray-200);z-index:5;">
+    <div style="display:flex;align-items:center;gap:14px;">
+      <img src="assets/radiomitre.svg" alt="Radio Mitre" style="height:26px;width:auto;"/>
+      <div style="width:1px;height:28px;background:var(--gray-200);"></div>
+      <div style="display:flex;flex-direction:column;line-height:1.2;">
+        <span style="font-size:15px;font-weight:700;color:var(--gray-800);white-space:nowrap;">Verificador de menciones</span>
+        <span style="font-size:12px;color:var(--gray-500);">Control de marcas al aire</span>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:12px;">
+      <sc-if value="{{ isMain }}" hint-placeholder-val="{{ true }}">
+        <div style="display:flex;align-items:center;gap:8px;padding:6px 12px;background:var(--gray-50);border:1px solid var(--gray-200);border-radius:999px;font-size:13px;color:var(--gray-600);max-width:320px;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--brand-500)" stroke-width="2" stroke-linecap="round"><path d="M3 12h3l3-7 4 14 3-7h5"/></svg>
+          <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500;color:var(--gray-700);">{{ fileName }}</span>
+        </div>
+      </sc-if>
+      <div onClick="{{ onGoUpload }}" style="display:inline-flex;align-items:center;gap:7px;padding:8px 14px;border:1px solid var(--gray-300);border-radius:6px;font-size:13px;font-weight:600;color:var(--gray-700);cursor:pointer;background:#fff;" style-hover="background:var(--gray-50);border-color:var(--gray-400)">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4M7 9l5-5 5 5M5 20h14"/></svg>
+        Cargar nuevo audio
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== UPLOAD VIEW ===================== -->
+  <sc-if value="{{ isUpload }}" hint-placeholder-val="{{ false }}">
+    <div style="flex:1;min-height:0;display:flex;align-items:center;justify-content:center;background:var(--gray-50);padding:40px;overflow:auto;">
+      <div style="width:560px;max-width:100%;background:#fff;border:1px solid var(--gray-200);border-radius:10px;box-shadow:var(--shadow-md);padding:30px;">
+        <div style="font-size:21px;font-weight:700;color:var(--gray-800);">Cargar audio y transcripción</div>
+        <div style="font-size:14px;color:var(--gray-600);margin-top:6px;line-height:1.5;">Subí el archivo de audio (mp3, wav, m4a) junto con su transcripción en JSON con timestamps por segmento.</div>
+
+        <div style="display:flex;flex-direction:column;gap:14px;margin-top:24px;">
+          <!-- audio dropzone -->
+          <div onClick="{{ onPickAudio }}" onDragover="{{ onDragOver }}" onDrop="{{ onDropAudio }}" style="{{ audioZoneStyle }}" style-hover="border-color:var(--brand-400);background:var(--brand-50)">
+            <div style="width:40px;height:40px;flex:none;border-radius:8px;background:var(--brand-50);display:flex;align-items:center;justify-content:center;color:var(--brand-600);">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 12h3l3-7 4 14 3-7h5"/></svg>
+            </div>
+            <div style="flex:1;min-width:0;">
+              <div style="font-size:14px;font-weight:600;color:var(--gray-800);">{{ audioZoneTitle }}</div>
+              <div style="font-size:13px;color:var(--gray-500);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ audioZoneSub }}</div>
+            </div>
+            <sc-if value="{{ hasPendingAudio }}" hint-placeholder-val="{{ false }}"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--green-500)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></sc-if>
+          </div>
+          <!-- json dropzone -->
+          <div onClick="{{ onPickJson }}" onDragover="{{ onDragOver }}" onDrop="{{ onDropJson }}" style="{{ jsonZoneStyle }}" style-hover="border-color:var(--brand-400);background:var(--brand-50)">
+            <div style="width:40px;height:40px;flex:none;border-radius:8px;background:var(--brand-50);display:flex;align-items:center;justify-content:center;color:var(--brand-600);">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/><path d="M9 13h6M9 17h6"/></svg>
+            </div>
+            <div style="flex:1;min-width:0;">
+              <div style="font-size:14px;font-weight:600;color:var(--gray-800);">{{ jsonZoneTitle }}</div>
+              <div style="font-size:13px;color:var(--gray-500);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ jsonZoneSub }}</div>
+            </div>
+            <sc-if value="{{ hasPendingJson }}" hint-placeholder-val="{{ false }}"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--green-500)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></sc-if>
+          </div>
+        </div>
+
+        <sc-if value="{{ uploadError }}" hint-placeholder-val="{{ false }}">
+          <div style="margin-top:14px;padding:10px 12px;background:#FFF5F5;border:1px solid #FEB2B2;border-radius:6px;font-size:13px;color:var(--red-600);">{{ uploadErrorMsg }}</div>
+        </sc-if>
+
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:24px;padding-top:20px;border-top:1px solid var(--gray-100);">
+          <div onClick="{{ onLoadSample }}" style="font-size:13px;font-weight:600;color:var(--brand-600);cursor:pointer;">Usar audio de ejemplo</div>
+          <div onClick="{{ onConfirmUpload }}" style="{{ confirmBtnStyle }}">Ver transcripción</div>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <!-- ===================== MAIN VIEW ===================== -->
+  <sc-if value="{{ isMain }}" hint-placeholder-val="{{ true }}">
+    <div style="flex:1;min-height:0;display:flex;">
+
+      <!-- LEFT: transcript -->
+      <div style="flex:1;min-width:0;display:flex;flex-direction:column;background:#fff;border-right:1px solid var(--gray-200);">
+        <div style="flex:none;display:flex;align-items:center;justify-content:space-between;padding:14px 22px;border-bottom:1px solid var(--gray-100);">
+          <div>
+            <div style="font-size:15px;font-weight:700;color:var(--gray-800);">Transcripción</div>
+            <div style="font-size:12px;color:var(--gray-500);margin-top:2px;">{{ segMeta }}</div>
+          </div>
+          <div onClick="{{ onJumpToCurrent }}" style="display:inline-flex;align-items:center;gap:6px;padding:6px 11px;border:1px solid var(--gray-200);border-radius:6px;font-size:12px;font-weight:600;color:var(--gray-600);cursor:pointer;" style-hover="background:var(--gray-50)">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12l7 7 7-7"/></svg>
+            Ir a lo que suena
+          </div>
+        </div>
+        <div ref="{{ scrollRef }}" style="flex:1;min-height:0;overflow-y:auto;padding:10px 14px 24px;position:relative;">
+          <sc-for list="{{ segmentViews }}" as="seg" hint-placeholder-count="8">
+            <div data-seg-index="{{ seg.dataIndex }}" onClick="{{ seg.onClick }}" style="{{ seg.rowStyle }}" style-hover="background:var(--gray-50)">
+              <div style="{{ seg.fillStyle }}"></div>
+              <div style="position:relative;z-index:1;flex:none;width:46px;font-variant-numeric:tabular-nums;font-size:12px;color:var(--gray-400);font-weight:600;padding-top:2px;letter-spacing:0.01em;">{{ seg.timeLabel }}</div>
+              <div style="position:relative;z-index:1;flex:1;min-width:0;font-size:15.5px;line-height:1.62;color:var(--gray-700);text-wrap:pretty;">
+                <sc-for list="{{ seg.parts }}" as="part" hint-placeholder-count="1"><span style="{{ part.style }}">{{ part.text }}</span></sc-for>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+
+      <!-- RIGHT: brands panel -->
+      <div style="flex:none;width:392px;display:flex;flex-direction:column;background:var(--gray-50);">
+        <div style="flex:none;padding:16px 18px;background:#fff;border-bottom:1px solid var(--gray-200);">
+          <div style="font-size:15px;font-weight:700;color:var(--gray-800);">Marcas a verificar</div>
+          <div style="font-size:12px;color:var(--gray-500);margin-top:2px;">Buscá una o más marcas para ver y escuchar dónde se nombran.</div>
+          <div style="display:flex;gap:8px;margin-top:12px;">
+            <input value="{{ brandInput }}" onChange="{{ onBrandInput }}" onKeyDown="{{ onBrandKey }}" placeholder="Ej: Mercado Libre" style="flex:1;min-width:0;padding:9px 12px;border:1px solid var(--gray-300);border-radius:6px;font-family:var(--font-sans);font-size:14px;color:var(--gray-800);outline:none;" style-focus="border-color:var(--brand-500);box-shadow:0 0 0 3px var(--brand-100)"/>
+            <div onClick="{{ onAddCurrent }}" style="display:inline-flex;align-items:center;justify-content:center;gap:5px;padding:9px 14px;background:var(--brand-500);color:#fff;border-radius:6px;font-size:14px;font-weight:600;cursor:pointer;flex:none;" style-hover="background:var(--brand-600)">Agregar</div>
+          </div>
+          <sc-if value="{{ hasChips }}" hint-placeholder-val="{{ true }}">
+            <div style="display:flex;flex-wrap:wrap;gap:7px;margin-top:12px;">
+              <sc-for list="{{ chips }}" as="chip" hint-placeholder-count="2">
+                <div style="display:inline-flex;align-items:center;gap:7px;padding:5px 7px 5px 10px;background:#fff;border:1px solid var(--gray-200);border-radius:999px;font-size:13px;font-weight:600;color:var(--gray-700);">
+                  <span style="{{ chip.dotStyle }}"></span>
+                  {{ chip.term }}
+                  <button onClick="{{ chip.onRemove }}" style="display:flex;align-items:center;justify-content:center;width:17px;height:17px;border:0;background:var(--gray-100);border-radius:50%;color:var(--gray-500);cursor:pointer;padding:0;" style-hover="background:var(--gray-200);color:var(--gray-700)">
+                    <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M5 5l14 14M19 5L5 19"/></svg>
+                  </button>
+                </div>
+              </sc-for>
+            </div>
+          </sc-if>
+        </div>
+
+        <div style="flex:1;min-height:0;overflow-y:auto;padding:14px;">
+          <sc-if value="{{ hasBrands }}" hint-placeholder-val="{{ true }}">
+            <sc-for list="{{ brandCards }}" as="card" hint-placeholder-count="2">
+              <div style="background:#fff;border:1px solid var(--gray-200);border-radius:8px;overflow:hidden;margin-bottom:12px;box-shadow:var(--shadow-xs);">
+                <div style="display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid var(--gray-100);">
+                  <span style="{{ card.dotStyle }}"></span>
+                  <span style="font-size:15px;font-weight:700;color:var(--gray-800);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ card.term }}</span>
+                  <span style="{{ card.countStyle }}">{{ card.countLabel }}</span>
+                </div>
+                <sc-if value="{{ card.hasApps }}" hint-placeholder-val="{{ true }}">
+                  <div style="padding:6px;">
+                    <sc-for list="{{ card.appearances }}" as="app" hint-placeholder-count="2">
+                      <button onClick="{{ app.onClick }}" style="{{ app.style }}" style-hover="background:var(--gray-50)">
+                        <span style="{{ app.pillStyle }}">
+                          <svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor" style="flex:none;"><path d="M8 5v14l11-7z"/></svg>
+                          {{ app.timeLabel }}
+                        </span>
+                        <span style="font-size:13px;color:var(--gray-600);line-height:1.45;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;">
+                          <sc-for list="{{ app.contextParts }}" as="part" hint-placeholder-count="1"><span style="{{ part.style }}">{{ part.text }}</span></sc-for>
+                        </span>
+                      </button>
+                    </sc-for>
+                  </div>
+                </sc-if>
+                <sc-if value="{{ card.noApps }}" hint-placeholder-val="{{ false }}">
+                  <div style="padding:14px;font-size:13px;color:var(--gray-500);">Sin menciones en este audio.</div>
+                </sc-if>
+              </div>
+            </sc-for>
+          </sc-if>
+          <sc-if value="{{ noBrands }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:48px 24px;color:var(--gray-400);">
+              <div style="width:52px;height:52px;border-radius:50%;background:#fff;border:1px solid var(--gray-200);display:flex;align-items:center;justify-content:center;margin-bottom:14px;">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--gray-400)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+              </div>
+              <div style="font-size:14px;font-weight:600;color:var(--gray-600);">Todavía no agregaste marcas</div>
+              <div style="font-size:13px;color:var(--gray-500);margin-top:4px;max-width:240px;line-height:1.5;">Escribí una marca arriba para resaltarla en la transcripción y listar sus menciones.</div>
+            </div>
+          </sc-if>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===================== MINI PLAYER ===================== -->
+    <div style="flex:none;height:86px;background:#fff;border-top:1px solid var(--gray-200);display:flex;align-items:center;gap:20px;padding:0 24px;box-shadow:0 -2px 8px rgba(0,0,0,.04);z-index:6;">
+      <div onClick="{{ onPlayPause }}" style="width:46px;height:46px;flex:none;border-radius:50%;background:var(--brand-500);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;" style-hover="background:var(--brand-600)">
+        <sc-if value="{{ isPlaying }}" hint-placeholder-val="{{ false }}"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg></sc-if>
+        <sc-if value="{{ isPaused }}" hint-placeholder-val="{{ true }}"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" style="margin-left:2px;"><path d="M8 5v14l11-7z"/></svg></sc-if>
+      </div>
+
+      <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:7px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;font-size:12.5px;">
+          <span style="{{ playStatusStyle }}">{{ playStatusLabel }}</span>
+          <span style="font-variant-numeric:tabular-nums;color:var(--gray-500);font-weight:500;white-space:nowrap;flex:none;padding-left:12px;">{{ timeLabel }}</span>
+        </div>
+        <div ref="{{ barRef }}" onPointerDown="{{ onBarDown }}" onPointerMove="{{ onBarMove }}" onPointerUp="{{ onBarUp }}" style="position:relative;height:10px;border-radius:999px;background:var(--gray-200);cursor:pointer;touch-action:none;">
+          <div style="{{ bandStyle }}"></div>
+          <div style="{{ progStyle }}"></div>
+          <div style="{{ knobStyle }}"></div>
+        </div>
+      </div>
+
+      <sc-if value="{{ hasSegment }}" hint-placeholder-val="{{ false }}">
+        <div onClick="{{ onClearSegment }}" style="display:inline-flex;align-items:center;gap:7px;padding:8px 12px;border:1px solid var(--gray-300);border-radius:6px;font-size:12.5px;font-weight:600;color:var(--gray-600);cursor:pointer;flex:none;" style-hover="background:var(--gray-50)">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M5 5l14 14M19 5L5 19"/></svg>
+          Salir del segmento
+        </div>
+      </sc-if>
+    </div>
+  </sc-if>
+
+  <audio ref="{{ audioRef }}" src="{{ audioUrl }}" preload="auto" style="display:none;"></audio>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;accent&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;Teal (interna)&quot;,&quot;Rojo Mitre&quot;],&quot;default&quot;:&quot;Teal (interna)&quot;,&quot;tsType&quot;:&quot;string&quot;}}">
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.audioRef = React.createRef();
+    this.barRef = React.createRef();
+    this.scrollRef = React.createRef();
+    this.audioInput = null;
+    this.jsonInput = null;
+    this._nextColor = 0;
+    this._lastActive = -1;
+    this._scrub = false;
+    this.segmentEnd = null;
+    this.PALETTE = [
+      { bg:'#FDE68A', fg:'#854D0E', line:'#F59E0B', dot:'#F59E0B' },
+      { bg:'#A7F3D0', fg:'#065F46', line:'#10B981', dot:'#10B981' },
+      { bg:'#BFDBFE', fg:'#1E40AF', line:'#3B82F6', dot:'#3B82F6' },
+      { bg:'#FBCFE8', fg:'#9D174D', line:'#EC4899', dot:'#EC4899' },
+      { bg:'#DDD6FE', fg:'#5B21B6', line:'#8B5CF6', dot:'#8B5CF6' },
+      { bg:'#FED7AA', fg:'#9A3412', line:'#F97316', dot:'#F97316' },
+      { bg:'#99F6E4', fg:'#115E59', line:'#14B8A6', dot:'#14B8A6' },
+      { bg:'#E9D5FF', fg:'#6B21A8', line:'#A855F7', dot:'#A855F7' },
+    ];
+    const segs = this.sampleSegments();
+    const brands = [ this.makeBrand('Mercado Libre'), this.makeBrand('Quilmes') ];
+    this.state = {
+      view: 'main',
+      fileName: 'mañana-de-mitre-tanda.mp3',
+      segments: segs,
+      audioUrl: '',
+      brands,
+      brandInput: '',
+      isPlaying: false,
+      currentTime: 0,
+      duration: segs.length ? segs[segs.length-1].end : 0,
+      segmentStart: null,
+      segmentEnd: null,
+      flashSeg: -1,
+      activeAppKey: null,
+      // upload staging
+      pendingAudioUrl: '', pendingAudioName: '', pendingSegments: null, pendingJsonName: '',
+      uploadError: false, uploadErrorMsg: '',
+    };
+  }
+
+  makeBrand(term) {
+    const color = this.PALETTE[this._nextColor % this.PALETTE.length];
+    this._nextColor++;
+    return { term: term.trim(), color };
+  }
+
+  componentDidMount() {
+    const url = this.makeSampleAudio(this.state.segments);
+    this.setState({ audioUrl: url });
+    const a = this.audioRef.current;
+    if (a) {
+      a.addEventListener('loadedmetadata', () => {
+        if (isFinite(a.duration) && a.duration > 0) this.setState({ duration: a.duration });
+      });
+      a.addEventListener('timeupdate', () => {
+        if (this.segmentEnd != null && a.currentTime >= this.segmentEnd) {
+          a.pause(); this.segmentEnd = null; this.setState({ segmentEnd: null, currentTime: a.currentTime });
+        } else if (a.paused) {
+          this.setState({ currentTime: a.currentTime });
+        }
+      });
+      a.addEventListener('play', () => { this.setState({ isPlaying: true }); this.startLoop(); });
+      a.addEventListener('pause', () => this.setState({ isPlaying: false }));
+      a.addEventListener('ended', () => { this.segmentEnd = null; this.setState({ isPlaying: false, segmentStart: null, segmentEnd: null }); });
+    }
+    // hidden file inputs
+    this.audioInput = document.createElement('input');
+    this.audioInput.type = 'file';
+    this.audioInput.accept = '.mp3,.wav,.m4a,.ogg,audio/*';
+    this.audioInput.style.display = 'none';
+    this.audioInput.addEventListener('change', e => { const f = e.target.files[0]; if (f) this.acceptAudio(f); });
+    this.jsonInput = document.createElement('input');
+    this.jsonInput.type = 'file';
+    this.jsonInput.accept = '.json,application/json';
+    this.jsonInput.style.display = 'none';
+    this.jsonInput.addEventListener('change', e => { const f = e.target.files[0]; if (f) this.acceptJson(f); });
+    document.body.appendChild(this.audioInput);
+    document.body.appendChild(this.jsonInput);
+  }
+
+  componentWillUnmount() {
+    if (this._raf) cancelAnimationFrame(this._raf);
+    if (this.audioInput) this.audioInput.remove();
+    if (this.jsonInput) this.jsonInput.remove();
+  }
+
+  // ---------------- playback loop ----------------
+  startLoop() { if (this._raf) cancelAnimationFrame(this._raf); this._raf = requestAnimationFrame(this.loop); }
+  loop = () => {
+    const a = this.audioRef.current;
+    if (!a) return;
+    if (this.segmentEnd != null && a.currentTime >= this.segmentEnd) {
+      a.pause();
+      this.segmentEnd = null;
+      this.setState({ segmentEnd: null, currentTime: a.currentTime });
+      return;
+    }
+    const now = performance.now();
+    if (now - (this._lastTick || 0) > 55) {
+      this._lastTick = now;
+      this.setState({ currentTime: a.currentTime });
+      const ai = this.findActive(a.currentTime);
+      if (ai !== this._lastActive) { this._lastActive = ai; if (ai >= 0) this.maybeScroll(ai); }
+    }
+    if (!a.paused) this._raf = requestAnimationFrame(this.loop);
+  };
+
+  findActive(t) {
+    const s = this.state.segments;
+    for (let i = 0; i < s.length; i++) { if (t >= s[i].start && t < s[i].end) return i; }
+    return -1;
+  }
+  maybeScroll(i) {
+    const c = this.scrollRef.current; if (!c) return;
+    const el = c.querySelector('[data-seg-index="' + i + '"]'); if (!el) return;
+    const top = el.offsetTop, h = el.offsetHeight;
+    if (top < c.scrollTop + 24 || top + h > c.scrollTop + c.clientHeight - 24) {
+      c.scrollTo({ top: Math.max(0, top - c.clientHeight * 0.38), behavior: 'smooth' });
+    }
+  }
+  hardScroll(i) {
+    const c = this.scrollRef.current; if (!c) return;
+    const el = c.querySelector('[data-seg-index="' + i + '"]'); if (!el) return;
+    c.scrollTo({ top: Math.max(0, el.offsetTop - c.clientHeight * 0.35), behavior: 'smooth' });
+  }
+
+  // ---------------- player actions ----------------
+  onPlayPause = () => {
+    const a = this.audioRef.current; if (!a) return;
+    if (a.paused) {
+      this.segmentEnd = null;
+      this.setState({ segmentStart: null, segmentEnd: null });
+      if (this.state.duration && a.currentTime >= this.state.duration - 0.05) a.currentTime = 0;
+      a.play();
+    } else a.pause();
+  };
+  playFrom = (i) => {
+    const a = this.audioRef.current; const seg = this.state.segments[i]; if (!a || !seg) return;
+    this.segmentEnd = null;
+    a.currentTime = seg.start;
+    a.play();
+    this._lastActive = i;
+    this.setState({ segmentStart: null, segmentEnd: null, activeAppKey: null, currentTime: seg.start });
+  };
+  playSegment = (i, key) => {
+    const a = this.audioRef.current; const seg = this.state.segments[i]; if (!a || !seg) return;
+    this.segmentEnd = seg.end;
+    a.currentTime = seg.start;
+    a.play();
+    this._lastActive = i;
+    this.setState({ segmentStart: seg.start, segmentEnd: seg.end, flashSeg: i, activeAppKey: key, currentTime: seg.start });
+    this.hardScroll(i);
+    clearTimeout(this._flashT);
+    this._flashT = setTimeout(() => this.setState({ flashSeg: -1 }), 2000);
+  };
+  onClearSegment = () => { this.segmentEnd = null; this.setState({ segmentStart: null, segmentEnd: null }); };
+  onJumpToCurrent = () => { const i = this.findActive(this.state.currentTime); this.hardScroll(i >= 0 ? i : 0); };
+
+  // ---------------- scrub ----------------
+  seekFromEvent(e) {
+    const bar = this.barRef.current; const a = this.audioRef.current; if (!bar || !a || !this.state.duration) return;
+    const r = bar.getBoundingClientRect();
+    let f = (e.clientX - r.left) / r.width; f = Math.max(0, Math.min(1, f));
+    this.segmentEnd = null;
+    a.currentTime = f * this.state.duration;
+    this.setState({ currentTime: a.currentTime, segmentStart: null, segmentEnd: null });
+  }
+  onBarDown = (e) => { this._scrub = true; try { e.currentTarget.setPointerCapture(e.pointerId); } catch(_){} this.seekFromEvent(e); };
+  onBarMove = (e) => { if (this._scrub) this.seekFromEvent(e); };
+  onBarUp = () => { this._scrub = false; };
+
+  // ---------------- brands ----------------
+  onBrandInput = (e) => this.setState({ brandInput: e.target.value });
+  onBrandKey = (e) => { if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); this.addBrand(this.state.brandInput); } };
+  onAddCurrent = () => this.addBrand(this.state.brandInput);
+  addBrand(raw) {
+    const term = (raw || '').trim();
+    if (!term) return;
+    const exists = this.state.brands.some(b => b.term.toLowerCase() === term.toLowerCase());
+    if (exists) { this.setState({ brandInput: '' }); return; }
+    this.setState({ brands: this.state.brands.concat([this.makeBrand(term)]), brandInput: '' });
+  }
+  removeBrand(idx) { this.setState({ brands: this.state.brands.filter((_, i) => i !== idx) }); }
+
+  // ---------------- upload ----------------
+  onGoUpload = () => this.setState({ view: 'upload', uploadError: false });
+  onPickAudio = () => this.audioInput && this.audioInput.click();
+  onPickJson = () => this.jsonInput && this.jsonInput.click();
+  onDragOver = (e) => { e.preventDefault(); };
+  onDropAudio = (e) => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) this.acceptAudio(f); };
+  onDropJson = (e) => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) this.acceptJson(f); };
+  acceptAudio(f) {
+    const url = URL.createObjectURL(f);
+    this.setState({ pendingAudioUrl: url, pendingAudioName: f.name, uploadError: false });
+  }
+  acceptJson(f) {
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        let data = JSON.parse(reader.result);
+        if (data && !Array.isArray(data) && Array.isArray(data.segments)) data = data.segments;
+        if (!Array.isArray(data)) throw new Error('format');
+        const segs = data.map(s => ({ start: Number(s.start), end: Number(s.end), text: String(s.text == null ? '' : s.text).trim() }))
+          .filter(s => isFinite(s.start) && isFinite(s.end) && s.text);
+        if (!segs.length) throw new Error('empty');
+        segs.sort((a, b) => a.start - b.start);
+        this.setState({ pendingSegments: segs, pendingJsonName: f.name, uploadError: false });
+      } catch (err) {
+        this.setState({ uploadError: true, uploadErrorMsg: 'No pudimos leer el JSON. Esperamos un array de segmentos { start, end, text } en segundos.', pendingSegments: null, pendingJsonName: '' });
+      }
+    };
+    reader.readAsText(f);
+  }
+  onConfirmUpload = () => {
+    if (!this.state.pendingAudioUrl || !this.state.pendingSegments) {
+      this.setState({ uploadError: true, uploadErrorMsg: 'Cargá el audio y la transcripción JSON para continuar.' });
+      return;
+    }
+    const a = this.audioRef.current; if (a) { a.pause(); a.currentTime = 0; }
+    this.segmentEnd = null; this._lastActive = -1;
+    const segs = this.state.pendingSegments;
+    this.setState({
+      view: 'main', fileName: this.state.pendingAudioName, audioUrl: this.state.pendingAudioUrl,
+      segments: segs, duration: segs[segs.length-1].end, currentTime: 0, isPlaying: false,
+      segmentStart: null, segmentEnd: null, flashSeg: -1, activeAppKey: null,
+      pendingAudioUrl: '', pendingAudioName: '', pendingSegments: null, pendingJsonName: '', uploadError: false,
+    });
+  };
+  onLoadSample = () => {
+    const a = this.audioRef.current; if (a) { a.pause(); a.currentTime = 0; }
+    this.segmentEnd = null; this._lastActive = -1; this._nextColor = 0;
+    const segs = this.sampleSegments();
+    const url = this.makeSampleAudio(segs);
+    this.setState({
+      view: 'main', fileName: 'mañana-de-mitre-tanda.mp3', audioUrl: url, segments: segs,
+      brands: [ this.makeBrand('Mercado Libre'), this.makeBrand('Quilmes') ],
+      duration: segs[segs.length-1].end, currentTime: 0, isPlaying: false,
+      segmentStart: null, segmentEnd: null, flashSeg: -1, activeAppKey: null,
+      pendingAudioUrl: '', pendingAudioName: '', pendingSegments: null, pendingJsonName: '', uploadError: false,
+    });
+  };
+
+  // ---------------- text matching ----------------
+  normSameLen(text) {
+    let out = '';
+    for (const ch of text) out += ch.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+    return out;
+  }
+  buildRe(term) {
+    const t = this.normSameLen(term).trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+');
+    if (!t) return null;
+    return new RegExp('(^|[^\\p{L}\\p{N}])(' + t + ')(?=[^\\p{L}\\p{N}]|$)', 'giu');
+  }
+  ensureMatches() {
+    const key = this.state.brands.map(b => b.term.toLowerCase()).join('||') + '##' + this.state.segments.length + '##' + (this.state.segments[0] ? this.state.segments[0].start : 0);
+    if (this._mkey === key) return this._mc;
+    const segHL = this.state.segments.map(() => []);
+    const brandApp = this.state.brands.map(() => []);
+    this.state.segments.forEach((seg, si) => {
+      const norm = this.normSameLen(seg.text);
+      this.state.brands.forEach((b, bi) => {
+        const re = this.buildRe(b.term); if (!re) return;
+        let m;
+        while ((m = re.exec(norm))) {
+          const start = m.index + m[1].length;
+          const end = start + m[2].length;
+          segHL[si].push({ start, end, bi });
+          brandApp[bi].push({ si, start, end });
+          re.lastIndex = end;
+        }
+      });
+      segHL[si].sort((a, b) => a.start - b.start);
+    });
+    this._mkey = key; this._mc = { segHL, brandApp };
+    return this._mc;
+  }
+  buildParts(text, hls) {
+    const parts = []; let pos = 0; let k = 0;
+    for (const h of hls) {
+      if (h.start < pos) continue;
+      if (h.start > pos) parts.push({ key: k++, text: text.slice(pos, h.start), style: null });
+      const c = this.state.brands[h.bi].color;
+      parts.push({ key: k++, text: text.slice(h.start, h.end), style: { background: c.bg, color: c.fg, borderRadius: '3px', padding: '0.5px 3px', fontWeight: 700, boxShadow: 'inset 0 -2px 0 ' + c.line } });
+      pos = h.end;
+    }
+    if (pos < text.length) parts.push({ key: k++, text: text.slice(pos), style: null });
+    if (!parts.length) parts.push({ key: 0, text: text, style: null });
+    return parts;
+  }
+  buildSnippet(text, start, end, color) {
+    const parts = [];
+    if (start > 0) parts.push({ key: 0, text: text.slice(0, start), style: null });
+    parts.push({ key: 1, text: text.slice(start, end), style: { color: color.fg, fontWeight: 700 } });
+    if (end < text.length) parts.push({ key: 2, text: text.slice(end), style: null });
+    return parts;
+  }
+
+  fmt(s) {
+    if (!isFinite(s) || s < 0) s = 0;
+    const m = Math.floor(s / 60); const sec = Math.floor(s % 60);
+    return (m < 10 ? '0' : '') + m + ':' + (sec < 10 ? '0' : '') + sec;
+  }
+
+  renderVals() {
+    const st = this.state;
+    const accentRed = (this.props.accent || 'Teal (interna)') === 'Rojo Mitre';
+    const accentVars = accentRed ? {
+      '--brand-50': 'var(--mitre-50)', '--brand-100': 'var(--mitre-100)', '--brand-300': 'var(--mitre-300)',
+      '--brand-400': 'var(--mitre-400)', '--brand-500': 'var(--mitre-500)', '--brand-600': 'var(--mitre-600)', '--brand-700': 'var(--mitre-700)'
+    } : {};
+    const rootStyle = Object.assign({ height: '100vh', width: '100%', display: 'flex', flexDirection: 'column', fontFamily: 'var(--font-sans)', background: 'var(--gray-50)', overflow: 'hidden', color: 'var(--gray-800)' }, accentVars);
+
+    const isMain = st.view === 'main';
+    const dur = st.duration || (st.segments.length ? st.segments[st.segments.length-1].end : 0);
+    const t = st.currentTime;
+    const active = this.findActive(t);
+
+    // transcript
+    const mc = this.ensureMatches();
+    const segmentViews = st.segments.map((seg, i) => {
+      const isActive = i === active;
+      const span = Math.max(0.001, seg.end - seg.start);
+      const fillPct = isActive ? Math.max(0, Math.min(100, ((t - seg.start) / span) * 100)) : 0;
+      const isFlash = i === st.flashSeg;
+      const rowStyle = {
+        display: 'flex', gap: '14px', padding: '9px 12px', cursor: 'pointer', position: 'relative',
+        overflow: 'hidden', borderRadius: '6px', marginBottom: '1px',
+        borderLeft: '3px solid ' + (isActive ? 'var(--brand-500)' : 'transparent'),
+        background: isFlash ? 'var(--brand-50)' : 'transparent',
+        boxShadow: isFlash ? 'inset 0 0 0 2px var(--brand-400)' : 'none',
+        transition: 'background .2s, box-shadow .2s', contentVisibility: 'auto', containIntrinsicSize: 'auto 52px'
+      };
+      const fillStyle = {
+        position: 'absolute', left: 0, top: 0, bottom: 0, width: fillPct + '%',
+        background: 'var(--brand-50)', transition: 'width .12s linear', pointerEvents: 'none', zIndex: 0,
+        borderRight: (isActive && fillPct > 0.5 && fillPct < 99.5) ? '2px solid var(--brand-300)' : 'none'
+      };
+      return {
+        key: i, dataIndex: i, timeLabel: this.fmt(seg.start), rowStyle, fillStyle,
+        parts: this.buildParts(seg.text, mc.segHL[i]),
+        onClick: () => this.playFrom(i),
+      };
+    });
+
+    // chips + brand cards
+    const chips = st.brands.map((b, i) => ({
+      key: b.term + i, term: b.term,
+      dotStyle: { width: '9px', height: '9px', borderRadius: '50%', background: b.color.dot, flex: 'none' },
+      onRemove: () => this.removeBrand(i),
+    }));
+    const brandCards = st.brands.map((b, bi) => {
+      const apps = mc.brandApp[bi];
+      const count = apps.length;
+      const c = b.color;
+      const countLabel = count === 0 ? 'Sin menciones' : (count === 1 ? '1 mención' : count + ' menciones');
+      const countStyle = {
+        flex: 'none', fontSize: '12px', fontWeight: 700, padding: '3px 9px', borderRadius: '999px',
+        background: count ? c.bg : 'var(--gray-100)', color: count ? c.fg : 'var(--gray-500)'
+      };
+      const appearances = apps.map((ap, idx) => {
+        const seg = st.segments[ap.si];
+        const key = ap.si + '-' + bi + '-' + ap.start;
+        const isAct = st.activeAppKey === key;
+        return {
+          key, timeLabel: this.fmt(seg.start),
+          contextParts: this.buildSnippet(seg.text, ap.start, ap.end, c),
+          pillStyle: { display: 'inline-flex', alignItems: 'center', gap: '5px', flex: 'none', fontVariantNumeric: 'tabular-nums', fontSize: '12px', fontWeight: 700, color: c.fg, background: c.bg, borderRadius: '4px', padding: '3px 7px' },
+          style: {
+            display: 'flex', alignItems: 'center', gap: '10px', width: '100%', textAlign: 'left',
+            padding: '8px 10px', border: '1px solid ' + (isAct ? 'var(--brand-400)' : 'transparent'),
+            background: isAct ? 'var(--brand-50)' : 'transparent', borderRadius: '6px', cursor: 'pointer',
+            font: 'inherit', marginBottom: '2px',
+          },
+          onClick: () => this.playSegment(ap.si, key),
+        };
+      });
+      return {
+        key: b.term + bi, term: b.term,
+        dotStyle: { width: '12px', height: '12px', borderRadius: '50%', background: c.dot, flex: 'none', boxShadow: '0 0 0 3px ' + c.bg },
+        countLabel, countStyle, hasApps: count > 0, noApps: count === 0, appearances,
+      };
+    });
+
+    // player
+    const progPct = dur ? Math.max(0, Math.min(100, (t / dur) * 100)) : 0;
+    const hasSegment = st.segmentStart != null && st.segmentEnd != null;
+    const bandStyle = (hasSegment && dur) ? {
+      position: 'absolute', top: 0, bottom: 0, left: (st.segmentStart / dur * 100) + '%',
+      width: ((st.segmentEnd - st.segmentStart) / dur * 100) + '%', background: 'var(--brand-100)', borderRadius: '999px'
+    } : { display: 'none' };
+    const progStyle = { position: 'absolute', top: 0, bottom: 0, left: 0, width: progPct + '%', background: 'var(--brand-500)', borderRadius: '999px', transition: this._scrub ? 'none' : 'width .1s linear', zIndex: 1 };
+    const knobStyle = { position: 'absolute', top: '50%', left: progPct + '%', transform: 'translate(-50%,-50%)', width: '15px', height: '15px', borderRadius: '50%', background: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,.3)', border: '3px solid var(--brand-500)', transition: this._scrub ? 'none' : 'left .1s linear', pointerEvents: 'none', zIndex: 2 };
+    let playStatusLabel, playStatusColor;
+    if (hasSegment) { playStatusLabel = 'Reproduciendo mención · ' + this.fmt(st.segmentStart) + ' – ' + this.fmt(st.segmentEnd); playStatusColor = 'var(--brand-600)'; }
+    else if (st.isPlaying) { playStatusLabel = 'Reproduciendo'; playStatusColor = 'var(--gray-700)'; }
+    else { playStatusLabel = 'En pausa'; playStatusColor = 'var(--gray-500)'; }
+
+    // upload zones
+    const hasPendingAudio = !!st.pendingAudioUrl;
+    const hasPendingJson = !!st.pendingSegments;
+    const zoneBase = (ok) => ({
+      display: 'flex', alignItems: 'center', gap: '14px', padding: '16px', borderRadius: '8px', cursor: 'pointer',
+      border: '1.5px dashed ' + (ok ? 'var(--green-500)' : 'var(--gray-300)'),
+      background: ok ? '#F0FFF4' : 'var(--gray-50)', transition: 'all .15s'
+    });
+    const ready = hasPendingAudio && hasPendingJson;
+    const confirmBtnStyle = {
+      padding: '9px 18px', borderRadius: '6px', fontSize: '14px', fontWeight: 600,
+      background: ready ? 'var(--brand-500)' : 'var(--gray-200)', color: ready ? '#fff' : 'var(--gray-400)',
+      cursor: ready ? 'pointer' : 'not-allowed'
+    };
+
+    return {
+      rootStyle,
+      isMain, isUpload: st.view === 'upload',
+      fileName: st.fileName,
+      audioUrl: st.audioUrl, audioRef: this.audioRef, barRef: this.barRef, scrollRef: this.scrollRef,
+      onGoUpload: this.onGoUpload,
+      // transcript
+      segMeta: st.segments.length + ' segmentos · ' + this.fmt(dur),
+      segmentViews, onJumpToCurrent: this.onJumpToCurrent,
+      // brands
+      brandInput: st.brandInput, onBrandInput: this.onBrandInput, onBrandKey: this.onBrandKey, onAddCurrent: this.onAddCurrent,
+      chips, hasChips: chips.length > 0,
+      brandCards, hasBrands: st.brands.length > 0, noBrands: st.brands.length === 0,
+      // player
+      isPlaying: st.isPlaying, isPaused: !st.isPlaying, onPlayPause: this.onPlayPause,
+      timeLabel: this.fmt(t) + ' / ' + this.fmt(dur),
+      playStatusLabel, playStatusStyle: { fontWeight: 600, color: playStatusColor, whiteSpace: 'nowrap', flex: 'none' },
+      onBarDown: this.onBarDown, onBarMove: this.onBarMove, onBarUp: this.onBarUp,
+      bandStyle, progStyle, knobStyle, hasSegment, onClearSegment: this.onClearSegment,
+      // upload
+      onPickAudio: this.onPickAudio, onPickJson: this.onPickJson, onDragOver: this.onDragOver, onDropAudio: this.onDropAudio, onDropJson: this.onDropJson,
+      onConfirmUpload: this.onConfirmUpload, onLoadSample: this.onLoadSample,
+      hasPendingAudio, hasPendingJson,
+      audioZoneStyle: zoneBase(hasPendingAudio), jsonZoneStyle: zoneBase(hasPendingJson),
+      audioZoneTitle: hasPendingAudio ? st.pendingAudioName : 'Archivo de audio',
+      audioZoneSub: hasPendingAudio ? 'Listo para reproducir' : 'Arrastrá o hacé click — mp3, wav, m4a',
+      jsonZoneTitle: hasPendingJson ? st.pendingJsonName : 'Transcripción (JSON)',
+      jsonZoneSub: hasPendingJson ? (st.pendingSegments.length + ' segmentos detectados') : 'Array de { start, end, text } en segundos',
+      uploadError: st.uploadError, uploadErrorMsg: st.uploadErrorMsg,
+      confirmBtnStyle,
+    };
+  }
+
+  // ---------------- sample data ----------------
+  sampleSegments() {
+    return [
+      { start: 0.0, end: 3.4, text: 'Buenos días, son las nueve y diez en la primera mañana de Radio Mitre.' },
+      { start: 3.4, end: 7.2, text: 'Arrancamos como todos los días con el repaso de la información más importante.' },
+      { start: 7.2, end: 11.0, text: 'Pero antes, una pausa para agradecer a quienes hacen posible este programa.' },
+      { start: 11.0, end: 15.4, text: 'Hoy te traigo una propuesta de Mercado Libre que no podés dejar pasar.' },
+      { start: 15.4, end: 19.6, text: 'En Mercado Libre arrancó el Hot Sale con miles de productos en cuotas sin interés.' },
+      { start: 19.6, end: 23.4, text: 'Entrás a la app de Mercado Libre, buscás lo que querés y lo recibís en tu casa.' },
+      { start: 23.4, end: 27.0, text: 'Envío gratis en miles de productos seleccionados. Así de simple.' },
+      { start: 27.0, end: 31.2, text: 'Y si pagás con tu tarjeta sumás todavía más beneficios. No te lo pierdas.' },
+      { start: 31.2, end: 35.0, text: 'Seguimos. El clima para hoy en la Ciudad de Buenos Aires.' },
+      { start: 35.0, end: 38.6, text: 'Una máxima de veintidós grados y cielo algo nublado por la tarde.' },
+      { start: 38.6, end: 42.8, text: 'Tiempo de hablar de otra marca que nos acompaña hace años: Quilmes.' },
+      { start: 42.8, end: 47.0, text: 'Quilmes presenta su nueva campaña pensada para el encuentro entre amigos.' },
+      { start: 47.0, end: 51.0, text: 'Porque del otro lado siempre hay alguien esperando para brindar con Quilmes.' },
+      { start: 51.0, end: 54.6, text: 'Disfrutá de un consumo responsable. Quilmes, el sabor del encuentro.' },
+      { start: 54.6, end: 58.4, text: 'Pasamos a los títulos del día en materia económica.' },
+      { start: 58.4, end: 62.6, text: 'El precio de los combustibles vuelve a estar en el centro de la escena.' },
+      { start: 62.6, end: 66.8, text: 'YPF confirmó una actualización en sus surtidores a partir de la medianoche.' },
+      { start: 66.8, end: 70.4, text: 'Desde YPF aclararon que el ajuste sigue la evolución del tipo de cambio.' },
+      { start: 70.4, end: 74.2, text: 'En el plano financiero, Banco Galicia lanzó una nueva línea de créditos.' },
+      { start: 74.2, end: 78.0, text: 'Banco Galicia ofrece tasas preferenciales para pequeñas empresas.' },
+      { start: 78.0, end: 81.8, text: 'Y ahora sí, la tanda. Ya volvemos con la entrevista del día.' },
+      { start: 81.8, end: 85.6, text: 'Farmacity te cuida todo el año con sus precios de farmacia.' },
+      { start: 85.6, end: 89.4, text: 'Encontrá tu sucursal de Farmacity más cercana y aprovechá las promociones.' },
+      { start: 89.4, end: 93.0, text: 'Con Movistar tenés más gigas para navegar donde estés.' },
+      { start: 93.0, end: 96.6, text: 'Movistar, la red que te conecta con lo que más te importa.' },
+      { start: 96.6, end: 100.2, text: 'Y para acompañar tu día, nada mejor que una Coca-Cola bien fría.' },
+      { start: 100.2, end: 103.8, text: 'Coca-Cola, presente en cada momento especial.' },
+      { start: 103.8, end: 107.6, text: 'Volvemos en breve con toda la actualidad de la mañana en Radio Mitre.' },
+    ];
+  }
+
+  makeSampleAudio(segments) {
+    const sr = 8000;
+    const total = (segments.length ? segments[segments.length-1].end : 1) + 0.4;
+    const n = Math.floor(total * sr);
+    const data = new Int16Array(n);
+    const scale = [220.0, 247.0, 262.0, 294.0, 330.0, 392.0, 294.0, 247.0];
+    const amp = 0.05;
+    segments.forEach((seg, i) => {
+      const f = scale[i % scale.length] * (i % 2 === 0 ? 1 : 1.5);
+      const s0 = Math.floor(seg.start * sr);
+      const s1 = Math.floor(seg.end * sr);
+      const len = s1 - s0;
+      const fade = Math.floor(0.04 * sr);
+      for (let k = 0; k < len; k++) {
+        const tt = k / sr;
+        let env = 1;
+        if (k < fade) env = k / fade;
+        else if (k > len - fade) env = (len - k) / fade;
+        const trem = 0.72 + 0.28 * Math.sin(2 * Math.PI * 4.5 * tt);
+        const v = Math.sin(2 * Math.PI * f * tt) * amp * env * trem;
+        const idx = s0 + k;
+        if (idx >= 0 && idx < n) data[idx] = Math.max(-1, Math.min(1, v)) * 32767;
+      }
+    });
+    // WAV encode (16-bit mono PCM)
+    const bytes = 44 + data.length * 2;
+    const buf = new ArrayBuffer(bytes);
+    const view = new DataView(buf);
+    const ws = (off, str) => { for (let i = 0; i < str.length; i++) view.setUint8(off + i, str.charCodeAt(i)); };
+    ws(0, 'RIFF'); view.setUint32(4, bytes - 8, true); ws(8, 'WAVE');
+    ws(12, 'fmt '); view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, 1, true);
+    view.setUint32(24, sr, true); view.setUint32(28, sr * 2, true); view.setUint16(32, 2, true); view.setUint16(34, 16, true);
+    ws(36, 'data'); view.setUint32(40, data.length * 2, true);
+    let off = 44;
+    for (let i = 0; i < data.length; i++) { view.setInt16(off, data[i], true); off += 2; }
+    const blob = new Blob([buf], { type: 'audio/wav' });
+    return URL.createObjectURL(blob);
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,317 @@
+/* ============================================================
+   Radio Mitre Design System
+   Colors + Type foundations
+   Derived from: packages/chakra-config/chakra.config.ts
+   (Chakra v3 theme with station-brand palettes) + Figma UI-KIT
+============================================================ */
+
+/* --- Web Fonts ------------------------------------------------
+   Codebase uses:
+     - Roboto  (Figma UI-Kit + marketing headings/body)
+     - Inter   (UI chrome, type specimens, admin)
+     - Montserrat (radiomitre-un-siglo centenary site,
+                   via next/font -> --font-montserrat)
+     - Georama (mobile-app-landing "Descargá Nuestra App")
+   All 4 are free on Google Fonts, no substitution needed.
+------------------------------------------------------------- */
+@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&family=Montserrat:wght@400;500;600;700;800;900&family=Georama:wght@400;500;600;700&display=swap');
+
+:root {
+  /* -------------------------------------------------------
+     BRAND PALETTES — one per station / product
+     (verbatim from chakra-config, station-scoped tokens)
+  -------------------------------------------------------- */
+
+  /* Chakra brand (teal) — default across internal tools */
+  --brand-50:  #E6FFFA;
+  --brand-100: #B2F5EA;
+  --brand-200: #81E6D9;
+  --brand-300: #4FD1C5;
+  --brand-400: #38B2AC;
+  --brand-500: #319795;  /* primary action */
+  --brand-600: #2C7A7B;
+  --brand-700: #285E61;
+  --brand-800: #234E52;
+  --brand-900: #1D4044;
+
+  /* Radio Mitre — AM 790 (flagship, news+talk, red) */
+  --mitre-50:  #FFE5E8;
+  --mitre-100: #FFB8C0;
+  --mitre-200: #FF8A97;
+  --mitre-300: #FF5C6E;
+  --mitre-400: #F52E45;
+  --mitre-500: #EA0A1F;  /* brand red */
+  --mitre-600: #C10819;
+  --mitre-700: #980613;
+  --mitre-800: #6F040D;
+  --mitre-900: #470207;
+
+  /* La 100 — FM 99.9 (music, pop, blue) */
+  --la100-50:  #E6F4FA;
+  --la100-100: #C2E2F0;
+  --la100-200: #9DD0E6;
+  --la100-300: #78BDDC;
+  --la100-400: #54ABD2;
+  --la100-500: #4E98BF;
+  --la100-600: #3E7A9A;
+  --la100-700: #2F5C74;
+  --la100-800: #1F3D4E;
+  --la100-900: #101F28;
+
+  /* Mía FM (green) */
+  --miafm-50:  #EDF3EB;
+  --miafm-100: #CEDDCA;
+  --miafm-200: #AEC7A8;
+  --miafm-300: #8FB186;
+  --miafm-400: #709B64;
+  --miafm-500: #3D5A2E;
+  --miafm-600: #324926;
+  --miafm-700: #26371D;
+  --miafm-800: #1B2615;
+  --miafm-900: #0F140C;
+
+  /* AR / Radio Argentina (deep red) */
+  --ar-50:  #FBE6E7;
+  --ar-100: #F3BFC0;
+  --ar-200: #EC999A;
+  --ar-300: #E57374;
+  --ar-400: #DD4C4E;
+  --ar-500: #B22324;
+  --ar-600: #8E1C1D;
+  --ar-700: #6A1516;
+  --ar-800: #470E0F;
+  --ar-900: #230707;
+
+  /* -------------------------------------------------------
+     NEUTRAL (Chakra gray)
+  -------------------------------------------------------- */
+  --gray-50:  #F7FAFC;
+  --gray-100: #EDF2F7;
+  --gray-200: #E2E8F0;
+  --gray-300: #CBD5E0;
+  --gray-400: #A0AEC0;
+  --gray-500: #718096;
+  --gray-600: #4A5568;
+  --gray-700: #2D3748;
+  --gray-800: #1A202C;
+  --gray-900: #171923;
+
+  /* -------------------------------------------------------
+     STATUS (Chakra red/yellow/green, standard)
+  -------------------------------------------------------- */
+  --red-500:    #E53E3E;
+  --red-600:    #C53030;
+  --yellow-500: #D69E2E;
+  --green-500:  #38A169;
+  --blue-500:   #3182CE;
+
+  /* -------------------------------------------------------
+     SEMANTIC TOKENS — how the apps actually use the palette
+     (mirrors Chakra semanticTokens block)
+  -------------------------------------------------------- */
+  --color-bg:            #FFFFFF;
+  --color-bg-subtle:     var(--gray-50);
+  --color-bg-muted:      var(--gray-100);
+  --color-bg-inverse:    var(--gray-800);  /* SideMenu */
+  --color-bg-inverse-2:  var(--gray-700);  /* sidebar borders */
+
+  --color-fg:            var(--gray-800);
+  --color-fg-muted:      var(--gray-600);
+  --color-fg-subtle:     var(--gray-500);
+  --color-fg-inverse:    rgba(255,255,255,0.92);
+  --color-fg-on-brand:   #FFFFFF;
+
+  --color-border:        var(--gray-200);
+  --color-border-subtle: var(--gray-100);
+  --color-border-strong: var(--gray-300);
+
+  --color-accent:        var(--brand-500);
+  --color-accent-hover:  var(--brand-600);
+  --color-accent-subtle: var(--brand-50);
+  --color-accent-fg:     var(--brand-700);
+
+  --color-danger:        var(--red-500);
+  --color-success:       var(--green-500);
+  --color-warning:       var(--yellow-500);
+  --color-info:          var(--blue-500);
+
+  --color-overlay:       rgba(0,0,0,0.48);
+
+  /* Centenary / Un Siglo site — black→red */
+  --siglo-bg:     #161616;
+  --siglo-red:    var(--mitre-500);
+  --siglo-red-2:  var(--mitre-700);
+
+  /* -------------------------------------------------------
+     TYPE FAMILIES
+  -------------------------------------------------------- */
+  --font-sans:    'Roboto', 'Inter', system-ui, -apple-system, 'Segoe UI', Arial, sans-serif;
+  --font-ui:      'Inter', 'Roboto', system-ui, -apple-system, sans-serif;
+  --font-display: 'Montserrat', 'Roboto', system-ui, sans-serif; /* "Un Siglo" / hero */
+  --font-marketing: 'Georama', 'Roboto', sans-serif;             /* landing pages */
+
+  /* -------------------------------------------------------
+     TYPE SCALE (Figma Typography frame + Chakra defaults)
+  -------------------------------------------------------- */
+  --fs-xs:   12px;
+  --fs-sm:   14px;
+  --fs-md:   16px;
+  --fs-lg:   18px;
+  --fs-xl:   20px;
+  --fs-2xl:  24px;
+  --fs-3xl:  30px;
+  --fs-4xl:  36px;
+  --fs-5xl:  48px;
+  --fs-6xl:  60px;
+
+  --lh-tight:  1.2;
+  --lh-snug:   1.375;
+  --lh-normal: 1.5;
+  --lh-relaxed: 1.625;
+
+  --fw-regular:  400;
+  --fw-medium:   500;
+  --fw-semibold: 600;
+  --fw-bold:     700;
+  --fw-extrabold:800;
+
+  /* -------------------------------------------------------
+     RADII — Chakra defaults
+  -------------------------------------------------------- */
+  --radius-sm: 4px;   /* Figma swatches, chips */
+  --radius-md: 6px;   /* buttons, cards */
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+  --radius-2xl: 16px;
+  --radius-full: 9999px;
+
+  /* -------------------------------------------------------
+     SHADOWS — Chakra shadow scale (from Figma Shadows page)
+  -------------------------------------------------------- */
+  --shadow-xs:  0 0 0 1px rgba(0,0,0,0.05);
+  --shadow-sm:  0 1px 2px 0 rgba(0,0,0,0.05);
+  --shadow-base:0 1px 3px 0 rgba(0,0,0,0.10), 0 1px 2px 0 rgba(0,0,0,0.06);
+  --shadow-md:  0 4px 6px -1px rgba(0,0,0,0.10), 0 2px 4px -1px rgba(0,0,0,0.06);
+  --shadow-lg:  0 10px 15px -3px rgba(0,0,0,0.10), 0 4px 6px -2px rgba(0,0,0,0.05);
+  --shadow-xl:  0 20px 25px -5px rgba(0,0,0,0.10), 0 10px 10px -5px rgba(0,0,0,0.04);
+  --shadow-2xl: 0 25px 50px -12px rgba(0,0,0,0.25);
+  --shadow-outline: 0 0 0 3px rgba(66,153,225,0.60);
+  --shadow-inner:   inset 0 2px 4px 0 rgba(0,0,0,0.06);
+  --shadow-dark-lg: rgba(0,0,0,0.10) 0 0 0 1px, rgba(0,0,0,0.30) 0 5px 10px, rgba(0,0,0,0.40) 0 15px 40px;
+
+  /* -------------------------------------------------------
+     SPACING — Chakra 4px base scale
+  -------------------------------------------------------- */
+  --space-0:  0;
+  --space-1:  4px;
+  --space-2:  8px;
+  --space-3:  12px;
+  --space-4:  16px;
+  --space-5:  20px;
+  --space-6:  24px;
+  --space-8:  32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+  --space-20: 80px;
+  --space-24: 96px;
+
+  /* -------------------------------------------------------
+     BREAKPOINTS (Chakra defaults, documented in /Breakpoints)
+  -------------------------------------------------------- */
+  --bp-sm: 30em;   /* 480 */
+  --bp-md: 48em;   /* 768 */
+  --bp-lg: 62em;   /* 992 */
+  --bp-xl: 80em;   /* 1280 */
+  --bp-2xl: 96em;  /* 1536 */
+
+  /* -------------------------------------------------------
+     MOTION
+  -------------------------------------------------------- */
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-out:      cubic-bezier(0, 0, 0.2, 1);
+  --ease-in:       cubic-bezier(0.4, 0, 1, 1);
+  --dur-fast:   120ms;
+  --dur-base:   200ms;
+  --dur-slow:   320ms;
+}
+
+/* ============================================================
+   Semantic type roles
+============================================================ */
+.rm-h1, h1.rm {
+  font-family: var(--font-sans);
+  font-weight: var(--fw-bold);
+  font-size: var(--fs-4xl);
+  line-height: var(--lh-tight);
+  color: var(--color-fg);
+  letter-spacing: -0.01em;
+}
+.rm-h2, h2.rm {
+  font-family: var(--font-sans);
+  font-weight: var(--fw-bold);
+  font-size: var(--fs-3xl);
+  line-height: var(--lh-tight);
+  color: var(--color-fg);
+}
+.rm-h3, h3.rm {
+  font-family: var(--font-sans);
+  font-weight: var(--fw-semibold);
+  font-size: var(--fs-2xl);
+  line-height: var(--lh-snug);
+  color: var(--color-fg);
+}
+.rm-h4, h4.rm {
+  font-family: var(--font-sans);
+  font-weight: var(--fw-semibold);
+  font-size: var(--fs-xl);
+  line-height: var(--lh-snug);
+  color: var(--color-fg);
+}
+.rm-subtitle {
+  font-family: var(--font-sans);
+  font-weight: var(--fw-medium);
+  font-size: var(--fs-lg);
+  line-height: var(--lh-snug);
+  color: var(--color-fg-muted);
+}
+.rm-body, p.rm {
+  font-family: var(--font-sans);
+  font-weight: var(--fw-regular);
+  font-size: var(--fs-md);
+  line-height: var(--lh-normal);
+  color: var(--color-fg);
+}
+.rm-small {
+  font-family: var(--font-sans);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-normal);
+  color: var(--color-fg-muted);
+}
+.rm-caption {
+  font-family: var(--font-ui);
+  font-size: var(--fs-xs);
+  line-height: var(--lh-normal);
+  color: var(--color-fg-subtle);
+  letter-spacing: 0.02em;
+}
+.rm-label {
+  font-family: var(--font-sans);
+  font-weight: var(--fw-semibold);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-normal);
+  color: var(--color-fg);
+}
+.rm-display {
+  font-family: var(--font-display);
+  font-weight: var(--fw-extrabold);
+  font-size: var(--fs-6xl);
+  line-height: 1.02;
+  letter-spacing: -0.02em;
+}
+
+/* Station accent helpers (swap --color-accent per station) */
+[data-station="mitre"]  { --color-accent: var(--mitre-500); --color-accent-hover: var(--mitre-600); --color-accent-subtle: var(--mitre-50); --color-accent-fg: var(--mitre-700); }
+[data-station="la100"]  { --color-accent: var(--la100-500); --color-accent-hover: var(--la100-600); --color-accent-subtle: var(--la100-50); --color-accent-fg: var(--la100-700); }
+[data-station="miafm"]  { --color-accent: var(--miafm-500); --color-accent-hover: var(--miafm-600); --color-accent-subtle: var(--miafm-50); --color-accent-fg: var(--miafm-700); }
+[data-station="ar"]     { --color-accent: var(--ar-500);    --color-accent-hover: var(--ar-600);    --color-accent-subtle: var(--ar-50);    --color-accent-fg: var(--ar-700); }

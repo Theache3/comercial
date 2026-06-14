@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Verificador de menciones · Radio Mitre</title>
+  <link rel="stylesheet" href="colors_and_type.css">
+  <style>
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; height: 100%; }
+    body { font-family: var(--font-sans); background: var(--gray-50); color: var(--gray-800); }
+    #app { height: 100vh; }
+    input { font-family: var(--font-sans); }
+
+    /* Scrollbars — match prototype */
+    ::-webkit-scrollbar { width: 11px; height: 11px; }
+    ::-webkit-scrollbar-thumb { background: var(--gray-300); border-radius: 999px; border: 3px solid transparent; background-clip: content-box; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--gray-400); background-clip: content-box; }
+    ::-webkit-scrollbar-track { background: transparent; }
+
+    /* Hover / focus states (the prototype expressed these as style-hover / style-focus) */
+    .tb-btn:hover     { background: var(--gray-50) !important; border-color: var(--gray-400) !important; }
+    .jump-btn:hover   { background: var(--gray-50) !important; }
+    .seg-row:hover    { background: var(--gray-50); }
+    .brand-add:hover  { background: var(--brand-600) !important; }
+    .chip-x:hover     { background: var(--gray-200) !important; color: var(--gray-700) !important; }
+    .appear-btn:hover { background: var(--gray-50); }
+    .play-btn:hover   { background: var(--brand-600) !important; }
+    .exit-seg:hover   { background: var(--gray-50) !important; }
+    .link-sample:hover{ text-decoration: underline; }
+    .brand-input:focus{ border-color: var(--brand-500) !important; box-shadow: 0 0 0 3px var(--brand-100); }
+    .dropzone:hover   { border-color: var(--brand-400) !important; background: var(--brand-50) !important; }
+    .confirm-btn.ready:hover { background: var(--brand-600) !important; }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+  <script src="app.js"></script>
+</body>
+</html>

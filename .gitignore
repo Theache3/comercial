@@ -1,0 +1,8 @@
+# macOS
+.DS_Store
+
+# Original design handoff archive (the extracted source stays in design_handoff/)
+design_handoff/handoff.tar.gz
+
+# Editor / local
+*.log
