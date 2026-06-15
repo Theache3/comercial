@@ -15,12 +15,43 @@ exactamente dónde**.
    Cada marca queda como chip (removible) con su color, un contador de menciones y la lista de
    apariciones (timestamp + contexto). Click en una aparición = reproduce **solo ese segmento**
    y lo resalta en la transcripción.
-4. **Mini player** (abajo): play/pausa, barra scrubbeable y tiempo actual / total. Al reproducir
-   una mención, pausa automáticamente al terminar el segmento ("Salir del segmento" vuelve al
-   modo normal).
+4. **Mini player** (abajo): play/pausa, barra scrubbeable, tiempo actual / total y **velocidad
+   de reproducción** (0,5× a 2×, botón a la derecha). Al reproducir una mención, pausa
+   automáticamente al terminar el segmento ("Salir del segmento" vuelve al modo normal).
 
 La búsqueda es **case-insensitive**, **ignora acentos** y matchea la marca **como palabra**
 (no como subcadena), con un color distinto por marca.
+
+## Enviar a cada marca sus menciones
+
+Cada tarjeta de marca tiene un botón **"Enviar a la marca"**. Genera y descarga un **archivo
+`.html` autocontenido para esa marca**, que el equipo comercial le manda por email al anunciante.
+
+- La marca solo **ve y escucha sus propios fragmentos** — cada mención queda recortada a su
+  propio clip de audio embebido en el archivo. No incluye la transcripción completa ni otras
+  marcas (el aislamiento es **estructural**: el archivo se arma solo con los datos de esa marca).
+- Se abre con doble click en cualquier navegador, **sin instalar nada y sin internet**: muestra
+  la marca, el programa, la fecha, el total de menciones y minutos al aire, y la lista de
+  fragmentos con su horario (mm:ss), el texto con la marca resaltada y un botón para reproducir
+  cada uno (más "Reproducir todo").
+- Sirve también como **constancia**: desde el navegador, *Imprimir → Guardar como PDF* genera
+  un documento prolijo (el PDF pierde el audio, lo cual es esperable para un archivo de respaldo).
+- Si el navegador no puede procesar el audio (codec raro), el archivo igual se genera con los
+  **textos y horarios** y un aviso de "audio no disponible".
+
+**Tamaño / envío:** el peso depende de los **segundos de mención**, no de la duración del
+programa. Una marca típica (~6 fragmentos) pesa ~2 MB; una muy nombrada puede acercarse al
+límite de email (25 MB) — si pasa de ~20 MB, la app avisa antes de descargar. Si el correo
+corporativo bloquea adjuntos `.html`, comprimilo en `.zip` antes de enviarlo.
+
+## Otras acciones
+
+- **Exportar CSV** (arriba del panel de marcas): baja todas las menciones de todas las marcas a
+  un CSV (programa, marca, horario mm:ss, inicio/fin en segundos, duración y texto), con BOM para
+  que Excel respete los acentos.
+- **Palabra por palabra** (arriba de la transcripción): resaltado karaoke palabra por palabra
+  mientras suena. Usa los timestamps de palabra del JSON si vienen (Whisper `words`), y si no,
+  los aproxima. Se puede apagar; se desactiva solo en transcripciones muy largas (+600 segmentos).
 
 ## Cargar tu propio audio
 
@@ -48,6 +79,10 @@ Botón **"Cargar nuevo audio"** → arrastrá/seleccioná:
   (ver `acceptJson` / `confirmUpload` en `app.js`).
 - Maneja audios largos (cientos de segmentos) con `content-visibility` y updates dirigidos
   (sin re-render por frame), para que no se trabe.
+- **Recorte de audio** (para "Enviar a la marca"): se decodifica el audio con `AudioContext`,
+  se recorta cada mención (con ~0,3 s de margen), se baja a mono 16 kHz y se reencoda WAV; los
+  clips se embeben en base64. Nunca se embebe el audio entero (sería imposible de mandar por
+  email). El `writeWav` es compartido con el generador del audio de ejemplo.
 
 ## Estructura
 

@@ -68,6 +68,11 @@
     triangle: `<svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor" style="flex:none;"><path d="M8 5v14l11-7z"/></svg>`,
     x: (w) => `<svg width="${w}" height="${w}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M5 5l14 14M19 5L5 19"/></svg>`,
     xThin: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M5 5l14 14M19 5L5 19"/></svg>`,
+    gauge: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 13l3.5-3.5"/><path d="M4 19a8 8 0 1116 0"/></svg>`,
+    download: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11M7.5 10.5L12 15l4.5-4.5M5 20h14"/></svg>`,
+    send: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4 20-7z"/></svg>`,
+    karaoke: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h11M4 12h7M4 17h14"/></svg>`,
+    spinner: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 3a9 9 0 109 9" opacity="0.9"/></svg>`,
   };
 
   /* ---------------- state ---------------- */
@@ -93,17 +98,26 @@
     segmentEnd: null,
     flashSeg: -1,
     activeAppKey: null,
+    rate: 1,                 // velocidad de reproducción
+    wordKaraoke: true,       // resaltado palabra por palabra
+    decodedBuffer: null,     // AudioBuffer decodificado (cache para "Enviar a la marca")
     // upload staging
     pendingAudioUrl: '', pendingAudioName: '', pendingSegments: null, pendingJsonName: '',
     uploadError: false, uploadErrorMsg: '',
   };
 
+  const RATES = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
+  const WORD_MAX = 600;      // por encima, se desactiva el karaoke por palabra (performance)
+  const MAX_DECODE_BYTES = 150 * 1024 * 1024; // archivos más grandes se exportan solo como texto
+
   // runtime refs (rebuilt on every renderApp)
   const refs = {};
   // audio + file inputs persist across renders so playback never breaks
   let audio, audioInput, jsonInput;
+  let _sharedCtx = null;     // un único AudioContext reutilizado por todos los export
   let segGate = null;        // auto-pause boundary (seconds) for "play segment"
   let styledActive = -1;     // segment index currently styled as active
+  let styledWordEl = null;   // word span currently ringed (karaoke)
   let lastScrolled = -1;
   let scrubbing = false;
   let raf = 0, lastTick = 0, flashTimer = 0;
@@ -117,6 +131,7 @@
 
     audio = h('audio', { preload: 'auto', style: { display: 'none' } });
     audio.addEventListener('loadedmetadata', () => {
+      audio.playbackRate = state.rate; // loading a new src resets playbackRate to 1
       if (isFinite(audio.duration) && audio.duration > 0) { state.duration = audio.duration; paintProgress(audio.currentTime); }
     });
     audio.addEventListener('timeupdate', () => {
@@ -132,7 +147,7 @@
     audio.addEventListener('pause', () => { state.isPlaying = false; paintStatus(); });
     audio.addEventListener('ended', () => {
       segGate = null; state.isPlaying = false; state.segmentStart = null; state.segmentEnd = null;
-      paintStatus(); paintProgress(audio.currentTime);
+      paintStatus(); paintProgress(audio.currentTime); paintActive(audio.currentTime, false);
     });
     document.body.appendChild(audio);
 
@@ -154,7 +169,7 @@
   ============================================================ */
   function renderApp() {
     const keepScroll = refs.scroll ? refs.scroll.scrollTop : 0;
-    styledActive = -1; lastScrolled = -1;
+    styledActive = -1; lastScrolled = -1; styledWordEl = null;
     root.innerHTML = '';
     refs.scroll = null;
 
@@ -287,10 +302,13 @@
         h('div', { style: { fontSize: '15px', fontWeight: '700', color: 'var(--gray-800)' } }, 'Transcripción'),
         h('div', { style: { fontSize: '12px', color: 'var(--gray-500)', marginTop: '2px' } }, state.segments.length + ' segmentos · ' + fmt(dur)),
       ),
-      h('div', { class: 'jump-btn', onClick: jumpToCurrent, style: {
-        display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '6px 11px', border: '1px solid var(--gray-200)',
-        borderRadius: '6px', fontSize: '12px', fontWeight: '600', color: 'var(--gray-600)', cursor: 'pointer',
-      } }, svg(I.down), 'Ir a lo que suena'),
+      h('div', { style: { display: 'flex', alignItems: 'center', gap: '8px' } },
+        karaokeToggle(),
+        h('div', { class: 'jump-btn', onClick: jumpToCurrent, style: {
+          display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '6px 11px', border: '1px solid var(--gray-200)',
+          borderRadius: '6px', fontSize: '12px', fontWeight: '600', color: 'var(--gray-600)', cursor: 'pointer',
+        } }, svg(I.down), 'Ir a lo que suena'),
+      ),
     );
 
     const scroll = h('div', { style: {
@@ -300,6 +318,7 @@
     refs.segEls = [];
 
     const mc = computeMatches();
+    const karaoke = state.wordKaraoke && state.segments.length <= WORD_MAX;
     state.segments.forEach((seg, i) => {
       const fill = h('div', { style: {
         position: 'absolute', left: '0', top: '0', bottom: '0', width: '0%', background: 'var(--brand-50)',
@@ -309,7 +328,8 @@
         position: 'relative', zIndex: '1', flex: '1', minWidth: '0', fontSize: '15.5px', lineHeight: '1.62',
         color: 'var(--gray-700)', textWrap: 'pretty',
       } });
-      buildParts(seg.text, mc.segHL[i]).forEach(p => text.appendChild(p));
+      const tn = transcriptNodes(seg, mc.segHL[i], karaoke);
+      tn.nodes.forEach(p => text.appendChild(p));
 
       const row = h('div', { class: 'seg-row', onClick: () => playFrom(i), style: {
         display: 'flex', gap: '14px', padding: '9px 12px', cursor: 'pointer', position: 'relative', overflow: 'hidden',
@@ -321,7 +341,7 @@
         text,
       );
       row.setAttribute('data-seg-index', i);
-      refs.segEls.push({ row, fill });
+      refs.segEls.push({ row, fill, wordSpans: tn.wordSpans });
       scroll.appendChild(row);
     });
 
@@ -350,9 +370,22 @@
       } }, 'Agregar'),
     );
 
+    const totalMentions = mc.brandApp.reduce((a, arr) => a + arr.length, 0);
+    const csvBtn = h('div', { class: 'csv-btn' + (totalMentions ? '' : ' disabled'), onClick: totalMentions ? exportCSV : null,
+      title: totalMentions ? 'Exportar todas las menciones a CSV' : 'No hay menciones para exportar', style: {
+        display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '6px 11px', border: '1px solid var(--gray-200)',
+        borderRadius: '6px', fontSize: '12px', fontWeight: '600', cursor: totalMentions ? 'pointer' : 'default',
+        color: totalMentions ? 'var(--gray-600)' : 'var(--gray-400)', background: '#fff', flex: 'none',
+      } }, svg(I.download), 'Exportar CSV');
+
     const headerKids = [
-      h('div', { style: { fontSize: '15px', fontWeight: '700', color: 'var(--gray-800)' } }, 'Marcas a verificar'),
-      h('div', { style: { fontSize: '12px', color: 'var(--gray-500)', marginTop: '2px' } }, 'Buscá una o más marcas para ver y escuchar dónde se nombran.'),
+      h('div', { style: { display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '10px' } },
+        h('div', { style: { minWidth: '0' } },
+          h('div', { style: { fontSize: '15px', fontWeight: '700', color: 'var(--gray-800)' } }, 'Marcas a verificar'),
+          h('div', { style: { fontSize: '12px', color: 'var(--gray-500)', marginTop: '2px' } }, 'Buscá una o más marcas para ver y escuchar dónde se nombran.'),
+        ),
+        csvBtn,
+      ),
       inputRow,
     ];
     if (state.brands.length) {
@@ -405,6 +438,14 @@
     const card = h('div', { style: { background: '#fff', border: '1px solid var(--gray-200)', borderRadius: '8px', overflow: 'hidden', marginBottom: '12px', boxShadow: 'var(--shadow-xs)' } }, head);
 
     if (count > 0) {
+      const sendBtn = h('button', { class: 'send-btn', style: {
+        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px', width: '100%',
+        padding: '8px 10px', border: '1px solid var(--brand-300)', borderRadius: '6px', background: 'var(--brand-50)',
+        color: 'var(--brand-700)', fontFamily: 'var(--font-sans)', fontSize: '13px', fontWeight: '600', cursor: 'pointer',
+      } }, svg(I.send), 'Enviar a la marca');
+      sendBtn.addEventListener('click', () => exportBrand(b, bi, apps, sendBtn));
+      card.appendChild(h('div', { style: { padding: '8px 8px 0' } }, sendBtn));
+
       const body = h('div', { style: { padding: '6px' } });
       apps.forEach(ap => {
         const seg = state.segments[ap.si];
@@ -456,6 +497,14 @@
       bar,
     );
 
+    const rateLabel = h('span', {}, fmtRate(state.rate));
+    refs.rateLabel = rateLabel;
+    const rateBtn = h('div', { class: 'rate-btn', onClick: cycleRate, title: 'Velocidad de reproducción', style: {
+      display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px', padding: '8px 11px',
+      border: '1px solid var(--gray-300)', borderRadius: '6px', fontSize: '12.5px', fontWeight: '700', color: 'var(--gray-700)',
+      cursor: 'pointer', flex: 'none', fontVariantNumeric: 'tabular-nums', minWidth: '64px',
+    } }, svg(I.gauge), rateLabel);
+
     const exitBtn = h('div', { class: 'exit-seg', onClick: clearSegment, style: {
       display: 'none', alignItems: 'center', gap: '7px', padding: '8px 12px', border: '1px solid var(--gray-300)',
       borderRadius: '6px', fontSize: '12.5px', fontWeight: '600', color: 'var(--gray-600)', cursor: 'pointer', flex: 'none',
@@ -465,8 +514,34 @@
     return h('div', { style: {
       flex: 'none', height: '86px', background: '#fff', borderTop: '1px solid var(--gray-200)', display: 'flex',
       alignItems: 'center', gap: '20px', padding: '0 24px', boxShadow: '0 -2px 8px rgba(0,0,0,.04)', zIndex: '6',
-    } }, playBtn, middle, exitBtn);
+    } }, playBtn, middle, rateBtn, exitBtn);
   }
+
+  function fmtRate(r) { return (r + '').replace('.', ',') + '×'; }
+  function cycleRate() {
+    const i = RATES.indexOf(state.rate);
+    setRate(RATES[(i + 1) % RATES.length]);
+  }
+  function setRate(r) {
+    state.rate = r;
+    if (audio) audio.playbackRate = r;
+    if (refs.rateLabel) refs.rateLabel.textContent = fmtRate(r);
+  }
+
+  function karaokeToggle() {
+    const on = state.wordKaraoke;
+    const disabled = state.segments.length > WORD_MAX;
+    const btn = h('div', { class: 'jump-btn', onClick: disabled ? null : toggleKaraoke,
+      title: disabled ? 'Desactivado en transcripciones muy largas' : 'Resaltar palabra por palabra mientras suena', style: {
+        display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '6px 11px', borderRadius: '6px',
+        fontSize: '12px', fontWeight: '600', cursor: disabled ? 'default' : 'pointer',
+        border: '1px solid ' + (on && !disabled ? 'var(--brand-400)' : 'var(--gray-200)'),
+        background: on && !disabled ? 'var(--brand-50)' : '#fff',
+        color: disabled ? 'var(--gray-400)' : (on ? 'var(--brand-700)' : 'var(--gray-600)'),
+      } }, svg(I.karaoke), 'Palabra por palabra');
+    return btn;
+  }
+  function toggleKaraoke() { state.wordKaraoke = !state.wordKaraoke; renderApp(); }
 
   /* ============================================================
      PAINT (cheap live updates, no re-render)
@@ -528,6 +603,28 @@
       }
       if (doScroll && idx !== lastScrolled) { lastScrolled = idx; maybeScroll(idx); }
     }
+    // word-by-word karaoke ring
+    let target = null;
+    if (idx >= 0) {
+      const ws = refs.segEls[idx] && refs.segEls[idx].wordSpans;
+      if (ws && ws.length) {
+        for (let j = 0; j < ws.length; j++) { if (t >= ws[j].start && t < ws[j].end) { target = ws[j].el; break; } }
+      }
+    }
+    if (target !== styledWordEl) { deactivateWord(styledWordEl); activateWord(target); styledWordEl = target; }
+  }
+
+  function activateWord(el) {
+    if (!el) return;
+    el.style.borderRadius = '3px';
+    el.style.boxShadow = el._bs ? (el._bs + ', 0 0 0 2px var(--brand-400)') : '0 0 0 2px var(--brand-400)';
+    if (!el._brandBg) el.style.background = 'var(--brand-100)';
+  }
+  function deactivateWord(el) {
+    if (!el) return;
+    el.style.borderRadius = el._br || '';
+    el.style.boxShadow = el._bs || '';
+    if (!el._brandBg) el.style.background = '';
   }
 
   function restoreTransitions() {
@@ -683,8 +780,12 @@
         let data = JSON.parse(reader.result);
         if (data && !Array.isArray(data) && Array.isArray(data.segments)) data = data.segments;
         if (!Array.isArray(data)) throw new Error('format');
-        const segs = data.map(s => ({ start: Number(s.start), end: Number(s.end), text: String(s.text == null ? '' : s.text).trim() }))
-          .filter(s => isFinite(s.start) && isFinite(s.end) && s.text);
+        const segs = data.map(s => {
+          // NFC: deja los acentos como un solo code point para que normSameLen preserve los offsets
+          const seg = { start: Number(s.start), end: Number(s.end), text: String(s.text == null ? '' : s.text).normalize('NFC').trim() };
+          if (Array.isArray(s.words)) seg.words = s.words.map(w => ({ word: w.word, start: Number(w.start), end: Number(w.end) }));
+          return seg;
+        }).filter(s => isFinite(s.start) && isFinite(s.end) && s.text);
         if (!segs.length) throw new Error('empty');
         segs.sort((a, b) => a.start - b.start);
         state.pendingSegments = segs; state.pendingJsonName = f.name; state.uploadError = false;
@@ -708,7 +809,7 @@
     Object.assign(state, {
       view: 'main', fileName: state.pendingAudioName, audioUrl: state.pendingAudioUrl, segments: segs,
       duration: segs[segs.length - 1].end, currentTime: 0, isPlaying: false,
-      segmentStart: null, segmentEnd: null, flashSeg: -1, activeAppKey: null,
+      segmentStart: null, segmentEnd: null, flashSeg: -1, activeAppKey: null, decodedBuffer: null,
       pendingAudioUrl: '', pendingAudioName: '', pendingSegments: null, pendingJsonName: '', uploadError: false,
     });
     renderApp();
@@ -723,7 +824,7 @@
       view: 'main', fileName: 'mañana-de-mitre-tanda.mp3', audioUrl: url, segments: segs,
       brands: [makeBrand('Mercado Libre'), makeBrand('Quilmes')],
       duration: segs[segs.length - 1].end, currentTime: 0, isPlaying: false,
-      segmentStart: null, segmentEnd: null, flashSeg: -1, activeAppKey: null,
+      segmentStart: null, segmentEnd: null, flashSeg: -1, activeAppKey: null, decodedBuffer: null,
       pendingAudioUrl: '', pendingAudioName: '', pendingSegments: null, pendingJsonName: '', uploadError: false,
     });
     renderApp();
@@ -793,6 +894,299 @@
   }
 
   /* ============================================================
+     WORD-LEVEL KARAOKE (resaltado palabra por palabra)
+     Usa timestamps de palabras del JSON si están; si no, aproxima
+     repartiendo el segmento por largo de palabra.
+  ============================================================ */
+  const TOKEN_RE = /\S+|\s+/g;
+  function tokenize(text) {
+    const toks = []; let m;
+    TOKEN_RE.lastIndex = 0;
+    while ((m = TOKEN_RE.exec(text))) toks.push({ text: m[0], isWord: /\S/.test(m[0]), cstart: m.index, cend: m.index + m[0].length });
+    return toks;
+  }
+  function wordTimesFor(seg, words) {
+    if (Array.isArray(seg.words) && seg.words.length === words.length
+        && seg.words.every(w => isFinite(+w.start) && isFinite(+w.end))) {
+      return seg.words.map(w => ({ start: +w.start, end: +w.end }));
+    }
+    const span = Math.max(0.001, seg.end - seg.start);
+    const weights = words.map(w => Math.max(1, w.text.length));
+    const total = weights.reduce((a, b) => a + b, 0) || 1;
+    let acc = 0;
+    return words.map((w, i) => {
+      const start = seg.start + (acc / total) * span; acc += weights[i];
+      return { start, end: seg.start + (acc / total) * span };
+    });
+  }
+  // Build transcript nodes; when karaoke, words become spans carrying their time range.
+  function transcriptNodes(seg, hls, karaoke) {
+    if (!karaoke) return { nodes: buildParts(seg.text, hls), wordSpans: null };
+    const text = seg.text;
+    const words = tokenize(text).filter(t => t.isWord);
+    const times = wordTimesFor(seg, words);
+    const timeByStart = {};
+    words.forEach((w, i) => { timeByStart[w.cstart] = times[i]; });
+    const rangeTime = (a, b) => {
+      let s = Infinity, e = -Infinity;
+      for (let i = 0; i < words.length; i++) if (words[i].cstart < b && words[i].cend > a) { s = Math.min(s, times[i].start); e = Math.max(e, times[i].end); }
+      if (s === Infinity) { const span = Math.max(0.001, seg.end - seg.start), L = Math.max(1, text.length); return { start: seg.start + (a / L) * span, end: seg.start + (b / L) * span }; }
+      return { start: s, end: e };
+    };
+    const nodes = [], wordSpans = [];
+    const emitGap = (sub, base) => {
+      for (const tk of tokenize(sub)) {
+        if (tk.isWord) {
+          const span = h('span', {}, tk.text);
+          const tm = timeByStart[base + tk.cstart] || rangeTime(base + tk.cstart, base + tk.cend);
+          span._bs = ''; span._br = ''; span._brandBg = false;
+          wordSpans.push({ el: span, start: tm.start, end: tm.end });
+          nodes.push(span);
+        } else nodes.push(document.createTextNode(tk.text));
+      }
+    };
+    let pos = 0;
+    for (const hl of hls) {
+      if (hl.start < pos) continue;
+      if (hl.start > pos) emitGap(text.slice(pos, hl.start), pos);
+      const c = state.brands[hl.bi].color;
+      const span = h('span', { style: { background: c.bg, color: c.fg, borderRadius: '3px', padding: '0.5px 3px', fontWeight: '700', boxShadow: 'inset 0 -2px 0 ' + c.line } }, text.slice(hl.start, hl.end));
+      span._bs = 'inset 0 -2px 0 ' + c.line; span._br = '3px'; span._brandBg = true;
+      const tm = rangeTime(hl.start, hl.end);
+      wordSpans.push({ el: span, start: tm.start, end: tm.end });
+      nodes.push(span);
+      pos = hl.end;
+    }
+    if (pos < text.length) emitGap(text.slice(pos), pos);
+    if (!nodes.length) nodes.push(document.createTextNode(text));
+    wordSpans.sort((a, b) => a.start - b.start);
+    return { nodes, wordSpans };
+  }
+
+  /* ============================================================
+     EXPORT & SHARE
+     - exportCSV: todas las menciones a CSV.
+     - exportBrand: un .html autocontenido por marca, con cada
+       mención recortada a su propio audio (clip) embebido. La marca
+       solo ve y escucha SUS fragmentos (aislamiento estructural).
+  ============================================================ */
+  function slugify(s) {
+    return (normSameLen(s) || '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'audio';
+  }
+  function baseName(name) { return (name || '').replace(/\.[^.]+$/, ''); }
+  function pad2(n) { return (n < 10 ? '0' : '') + n; }
+  function todayISO() { const d = new Date(); return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()); }
+  function todayLong() {
+    const meses = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+    const d = new Date(); return d.getDate() + ' de ' + meses[d.getMonth()] + ' de ' + d.getFullYear();
+  }
+  function downloadBlob(content, filename, type) {
+    const blob = content instanceof Blob ? content : new Blob([content], { type: type || 'application/octet-stream' });
+    const url = URL.createObjectURL(blob);
+    const a = h('a', { href: url, download: filename, style: { display: 'none' } });
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+  }
+  function escHtml(s) { return String(s).replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch])); }
+
+  function csvCell(v) { const s = v == null ? '' : String(v); return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; }
+  function exportCSV() {
+    const mc = computeMatches();
+    const rows = [['Programa', 'Marca', 'Mención #', 'Inicio (mm:ss)', 'Fin (mm:ss)', 'Inicio (s)', 'Fin (s)', 'Duración (s)', 'Texto del segmento']];
+    state.brands.forEach((b, bi) => {
+      mc.brandApp[bi].forEach((ap, idx) => {
+        const seg = state.segments[ap.si];
+        rows.push([state.fileName, b.term, idx + 1, fmt(seg.start), fmt(seg.end), seg.start.toFixed(2), seg.end.toFixed(2), (seg.end - seg.start).toFixed(2), seg.text]);
+      });
+    });
+    const csv = rows.map(r => r.map(csvCell).join(',')).join('\r\n');
+    const BOM = String.fromCharCode(0xFEFF); // Excel lee acentos correctamente
+    downloadBlob(BOM + csv, 'menciones_' + slugify(baseName(state.fileName)) + '_' + todayISO() + '.csv', 'text/csv;charset=utf-8');
+  }
+
+  function abToBase64(buf) {
+    const bytes = new Uint8Array(buf); let bin = ''; const chunk = 0x8000;
+    for (let i = 0; i < bytes.length; i += chunk) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+    return btoa(bin);
+  }
+  // Clip [start,end] (+pad seconds) of an AudioBuffer to a mono 16-bit WAV (<= targetSR).
+  function clipToWav(buffer, start, end, pad, targetSR) {
+    const sr = buffer.sampleRate, ch = buffer.numberOfChannels;
+    const s0 = Math.max(0, Math.floor((start - pad) * sr));
+    const s1 = Math.min(buffer.length, Math.ceil((end + pad) * sr));
+    if (s0 >= buffer.length || s1 <= s0) return null; // segmento fuera del audio (transcripción/audio desfasados)
+    const srcLen = Math.max(1, s1 - s0);
+    const mono = new Float32Array(srcLen);
+    for (let c = 0; c < ch; c++) { const d = buffer.getChannelData(c); for (let i = 0; i < srcLen; i++) mono[i] += d[s0 + i] / ch; }
+    const outSR = Math.min(targetSR, sr);
+    let out;
+    if (outSR === sr) out = mono;
+    else {
+      const ratio = outSR / sr, outLen = Math.max(1, Math.round(srcLen * ratio));
+      out = new Float32Array(outLen);
+      for (let i = 0; i < outLen; i++) {
+        const sp = i / ratio, i0 = Math.floor(sp), i1 = Math.min(srcLen - 1, i0 + 1), f = sp - i0;
+        out[i] = (mono[i0] || 0) * (1 - f) + (mono[i1] || 0) * f;
+      }
+    }
+    const int16 = new Int16Array(out.length);
+    for (let i = 0; i < out.length; i++) { const v = Math.max(-1, Math.min(1, out[i])); int16[i] = v < 0 ? v * 0x8000 : v * 0x7FFF; }
+    return writeWav(int16, outSR);
+  }
+
+  // Un único AudioContext para toda la sesión (evita el límite de contextos del navegador).
+  function getAudioCtx() {
+    if (!_sharedCtx) { const C = window.AudioContext || window.webkitAudioContext; _sharedCtx = new C(); }
+    return _sharedCtx;
+  }
+
+  async function exportBrand(brand, bi, apps, btn) {
+    if (btn && btn._busy) return;
+    const setBtn = (html, busy) => { if (!btn) return; btn.innerHTML = html; btn.style.opacity = busy ? '0.7' : '1'; btn.style.cursor = busy ? 'default' : 'pointer'; btn._busy = !!busy; };
+    const orig = btn ? (btn._origHtml || (btn._origHtml = btn.innerHTML)) : null;
+    const restore = () => { if (btn) clearTimeout(btn._restoreT); setBtn(orig, false); };
+    if (btn) clearTimeout(btn._restoreT);
+    setBtn('Generando…', true);
+    try {
+      // group matches by segment → one fragment per unique segment (avoid duplicate clips)
+      const bySeg = new Map();
+      apps.forEach(ap => { if (!bySeg.has(ap.si)) bySeg.set(ap.si, []); bySeg.get(ap.si).push(ap); });
+      const segIdxs = [...bySeg.keys()].sort((a, b) => a - b);
+
+      // decode once per audio file and cache it (reused across brands); skip giant files → texto solo
+      let buffer = state.decodedBuffer, decodeFailed = false;
+      if (!buffer && state.audioUrl) {
+        try {
+          const raw = await fetch(state.audioUrl).then(r => r.arrayBuffer());
+          if (raw.byteLength > MAX_DECODE_BYTES) decodeFailed = true;
+          else { buffer = await getAudioCtx().decodeAudioData(raw); state.decodedBuffer = buffer; }
+        } catch (e) { decodeFailed = true; }
+      }
+
+      const fragments = segIdxs.map(si => {
+        const seg = state.segments[si];
+        const ranges = bySeg.get(si).map(ap => ({ start: ap.start, end: ap.end })).sort((a, b) => a.start - b.start);
+        let audioUri = null;
+        if (buffer) { try { const wav = clipToWav(buffer, seg.start, seg.end, 0.3, 16000); if (wav) audioUri = 'data:audio/wav;base64,' + abToBase64(wav); } catch (e) {} }
+        return { t: fmt(seg.start), dur: Math.max(0, seg.end - seg.start), text: seg.text, ranges, audioUri };
+      });
+
+      const approxMB = fragments.reduce((a, f) => a + (f.audioUri ? f.audioUri.length : 0), 0) / (1024 * 1024);
+      if (approxMB > 20 && !window.confirm('El archivo de ' + brand.term + ' pesa ~' + approxMB.toFixed(1) + ' MB y puede ser difícil de enviar por email. ¿Descargar igual?')) {
+        restore(); return;
+      }
+
+      const noAudio = decodeFailed || !fragments.some(f => f.audioUri);
+      const html = buildShareHtml(brand, fragments, apps.length, noAudio);
+      const fname = 'menciones_' + slugify(brand.term) + '_' + slugify(baseName(state.fileName)) + '_' + todayISO() + '.html';
+      downloadBlob(html, fname, 'text/html;charset=utf-8');
+      setBtn('✓ Archivo generado', false);
+      if (btn) btn._restoreT = setTimeout(() => setBtn(orig, false), 2400);
+    } catch (e) {
+      restore();
+      window.alert('No se pudo generar el archivo para ' + brand.term + '.' + (e && e.message ? '\n' + e.message : ''));
+    }
+  }
+
+  const RADIOMITRE_LOGO = '<svg xmlns="http://www.w3.org/2000/svg" class="logo" viewBox="0 0 56.706 31.24">'
+    + '<path d="M15.5,85.117l2.291-10.94h4.376l1.493,6.564L27.676,74.1h4.4L29.735,85.091H26.208l.952-4.865-3.089,4.917H21.266l-.952-5.1-1.133,5.071Z" transform="translate(-15.5 -56.115)" fill="#fff"></path>'
+    + '<path d="M79.781,85.588H76.1L78.211,74.7h3.681Z" transform="translate(-60.398 -56.562)" fill="#fff"></path>'
+    + '<path d="M112.549,74.4H101.763l-.463,2.368h3.5l-1.725,8.6h3.758l1.75-8.6h3.5Z" transform="translate(-79.051 -56.339)" fill="#fff"></path>'
+    + '<path d="M152.559,78.121a3.068,3.068,0,0,0-2.111-3.295l-8.237-.026L140.1,85.688h3.681l1.673-8.675h2.626a1.325,1.325,0,0,1,1.055,1.364c.129,1.21-1.236,1.725-1.236,1.725l-2.806-.026,3.5,7.8,3.861-.026-2.188-6.023A3.756,3.756,0,0,0,152.559,78.121Z" transform="translate(-107.783 -56.636)" fill="#fff"></path>'
+    + '<path d="M199.6,76.991l.515-2.291h-9.807L188.2,85.588h9.988l.541-2.368h-6.744l.438-2.291h5.534l.412-2.265h-4.2l-1.544,1.313-.077.36.644-3.346Z" transform="translate(-143.412 -56.562)" fill="#fff"></path>'
+    + '<path d="M50.2,21.692S58,12.657,76.25,5.115c0,0,.978-.618.618.515,0,0-3.166,4.633-4.556,6.126,0,0-.36.515.257.36a51.689,51.689,0,0,1,9.293-4.659s.515-.077.515.18c0,0-1.055,5.1-1.931,5.689a.258.258,0,0,0,.36.257,43.173,43.173,0,0,1,13.231-2.806l.257.18S78.515,15.514,77.1,17.625c0,0-1.133.077-.8-.618,0,0,1.055-4.479,1.673-4.994,0,0-9.91,6.307-11.583,5.972,0,0-.8.1-.257-.7a30.481,30.481,0,0,1,2.445-5.534s-15.084,7-17.53,9.653C51.075,21.435,50.921,21.949,50.2,21.692Z" transform="translate(-40.936 -4.947)" fill="#ea0a1f"></path>'
+    + '</svg>';
+  const PLAY_SVG = '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
+  const PLAY_SVG_SM = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
+  const LOCK_SVG = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 018 0v3"/></svg>';
+  const SHARE_SCRIPT = "(function(){var P='" + PLAY_SVG + "',U='<svg width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"currentColor\"><path d=\"M6 5h4v14H6zM14 5h4v14h-4z\"/></svg>';"
+    + "var rows=[].slice.call(document.querySelectorAll('.frag'));"
+    + "var au=rows.map(function(r){return r.querySelector('audio');}),bt=rows.map(function(r){return r.querySelector('.play');});"
+    + "var cur=-1,chain=false;"
+    + "function stop(i){if(i<0||!au[i])return;au[i].pause();au[i].currentTime=0;bt[i].classList.remove('playing');bt[i].innerHTML=P;}"
+    + "function play(i){if(!au[i])return;if(cur!==-1&&cur!==i)stop(cur);cur=i;au[i].play();bt[i].classList.add('playing');bt[i].innerHTML=U;}"
+    + "bt.forEach(function(b,i){if(!au[i])return;b.addEventListener('click',function(){if(cur===i&&!au[i].paused){au[i].pause();bt[i].classList.remove('playing');bt[i].innerHTML=P;}else{chain=false;play(i);}});});"
+    + "au.forEach(function(a,i){if(!a)return;a.addEventListener('ended',function(){stop(i);if(chain){var n=i+1;while(n<au.length&&!au[n])n++;if(n<au.length)play(n);else chain=false;}});});"
+    + "var pa=document.getElementById('playall');if(pa)pa.addEventListener('click',function(){chain=true;var f=0;while(f<au.length&&!au[f])f++;if(f<au.length)play(f);});"
+    + "})();";
+
+  function frHtml(text, ranges, color) {
+    let html = '', pos = 0;
+    for (const r of ranges) {
+      if (r.start < pos) continue;
+      if (r.start > pos) html += escHtml(text.slice(pos, r.start));
+      html += '<mark style="background:' + color.bg + ';color:' + color.fg + ';box-shadow:inset 0 -2px 0 ' + color.line + ';border-radius:3px;padding:0.5px 3px;font-weight:700;">' + escHtml(text.slice(r.start, r.end)) + '</mark>';
+      pos = r.end;
+    }
+    if (pos < text.length) html += escHtml(text.slice(pos));
+    return html || escHtml(text);
+  }
+
+  function buildShareHtml(brand, fragments, mentionCount, noAudio) {
+    const c = brand.color;
+    const fragCount = fragments.length;
+    const totalSec = fragments.reduce((a, f) => a + f.dur, 0);
+    const hasAudio = !noAudio && fragments.some(f => f.audioUri);
+    const summary = (mentionCount === fragCount)
+      ? (mentionCount + (mentionCount === 1 ? ' mención' : ' menciones'))
+      : (mentionCount + ' menciones en ' + fragCount + (fragCount === 1 ? ' fragmento' : ' fragmentos'));
+    const rows = fragments.map((f) => `
+      <li class="frag">
+        <button class="play" ${f.audioUri ? '' : 'disabled'} aria-label="Reproducir">${f.audioUri ? PLAY_SVG : LOCK_SVG}</button>
+        <div class="body">
+          <span class="time">${f.t}</span>
+          <p class="text">${frHtml(f.text, f.ranges, c)}</p>
+          ${f.audioUri ? `<audio preload="none" src="${f.audioUri}"></audio>` : '<span class="noaudio">Audio no disponible — verificar contra la emisión original.</span>'}
+        </div>
+      </li>`).join('');
+
+    return `<!DOCTYPE html>
+<html lang="es"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Menciones de ${escHtml(brand.term)} — ${escHtml(state.fileName)}</title>
+<style>
+  :root{--brand:#319795;--brand-d:#2C7A7B;--ink:#1A202C;--muted:#4A5568;--sub:#718096;--line:#E2E8F0;--bg:#F7FAFC;--card:#fff}
+  *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-family:'Roboto',system-ui,-apple-system,'Segoe UI',Arial,sans-serif;line-height:1.5}
+  .wrap{max-width:760px;margin:0 auto;padding:28px 20px 60px}
+  .bar{display:flex;align-items:center;gap:12px;background:var(--ink);color:#fff;border-radius:8px;padding:12px 16px}
+  .bar .logo{height:22px;width:auto}
+  .head{background:var(--card);border:1px solid var(--line);border-radius:10px;box-shadow:0 4px 6px -1px rgba(0,0,0,.1),0 2px 4px -1px rgba(0,0,0,.06);padding:22px 24px;margin-top:14px}
+  .brand{display:flex;align-items:center;gap:10px;font-size:22px;font-weight:800}
+  .dot{width:14px;height:14px;border-radius:50%;flex:none}
+  .meta{color:var(--sub);font-size:13px;margin-top:6px}
+  .chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+  .chip{font-size:12px;font-weight:700;padding:4px 10px;border-radius:999px;background:#EDF2F7;color:var(--muted)}
+  .playall{margin-top:16px;display:inline-flex;align-items:center;gap:8px;background:var(--brand);color:#fff;border:0;border-radius:6px;padding:9px 14px;font-family:inherit;font-size:14px;font-weight:600;cursor:pointer}
+  .playall:hover{background:var(--brand-d)}
+  .banner{margin-top:14px;padding:10px 12px;background:#FFF5F5;border:1px solid #FEB2B2;border-radius:6px;color:#C53030;font-size:13px}
+  ol.frags{list-style:none;margin:18px 0 0;padding:0;display:flex;flex-direction:column;gap:10px}
+  .frag{display:flex;gap:12px;align-items:flex-start;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:12px 14px}
+  .play{flex:none;width:40px;height:40px;border-radius:50%;border:0;background:var(--brand);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer}
+  .play:hover{background:var(--brand-d)}.play:disabled{background:#CBD5E0;cursor:not-allowed}.play.playing{background:var(--brand-d)}
+  .body{flex:1;min-width:0}
+  .time{display:inline-block;font-variant-numeric:tabular-nums;font-size:12px;font-weight:700;color:var(--brand-d);background:#E6FFFA;border-radius:4px;padding:2px 8px}
+  .text{margin:7px 0 0;font-size:15px;color:#2D3748}
+  .noaudio{display:block;margin-top:6px;font-size:12px;color:var(--sub)}
+  footer{margin-top:26px;text-align:center;color:var(--sub);font-size:12px}
+  @media print{body{background:#fff}.play,.playall{display:none!important}.frag,.head{box-shadow:none;break-inside:avoid}.bar{background:#fff;color:var(--ink);border:1px solid var(--line)}}
+</style></head><body>
+<div class="wrap">
+  <div class="bar">${RADIOMITRE_LOGO}<div><div style="font-weight:700;font-size:14px">Radio Mitre</div><div style="font-size:12px;color:rgba(255,255,255,.7)">Verificador de menciones al aire</div></div></div>
+  <div class="head">
+    <div class="brand"><span class="dot" style="background:${c.dot};box-shadow:0 0 0 3px ${c.bg}"></span>${escHtml(brand.term)}</div>
+    <div class="meta">${escHtml(state.fileName)} · ${todayLong()}</div>
+    <div class="chips"><span class="chip">${summary}</span><span class="chip">${fmt(totalSec)} de audio</span></div>
+    ${hasAudio ? '<button class="playall" id="playall">' + PLAY_SVG_SM + ' Reproducir todo</button>' : ''}
+    ${noAudio ? '<div class="banner">No se pudo procesar el audio; este documento incluye solo los textos y horarios de cada mención.</div>' : ''}
+  </div>
+  <ol class="frags">${rows}</ol>
+  <footer>Generado el ${todayLong()} · Radio Mitre — Verificador de menciones</footer>
+</div>
+<script>${SHARE_SCRIPT}</script>
+</body></html>`;
+  }
+
+  /* ============================================================
      SAMPLE DATA (audio + transcript demo — el punto a reemplazar
      más adelante por una API de transcripción real)
   ============================================================ */
@@ -851,17 +1245,22 @@
         if (idx >= 0 && idx < n) data[idx] = Math.max(-1, Math.min(1, v)) * 32767;
       }
     });
-    const bytes = 44 + data.length * 2;
+    return URL.createObjectURL(new Blob([writeWav(data, sr)], { type: 'audio/wav' }));
+  }
+
+  // 16-bit mono PCM WAV from an Int16Array. Shared by the demo generator and the clip exporter.
+  function writeWav(int16, sampleRate) {
+    const bytes = 44 + int16.length * 2;
     const buf = new ArrayBuffer(bytes);
     const view = new DataView(buf);
     const ws = (off, str) => { for (let i = 0; i < str.length; i++) view.setUint8(off + i, str.charCodeAt(i)); };
     ws(0, 'RIFF'); view.setUint32(4, bytes - 8, true); ws(8, 'WAVE');
     ws(12, 'fmt '); view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, 1, true);
-    view.setUint32(24, sr, true); view.setUint32(28, sr * 2, true); view.setUint16(32, 2, true); view.setUint16(34, 16, true);
-    ws(36, 'data'); view.setUint32(40, data.length * 2, true);
+    view.setUint32(24, sampleRate, true); view.setUint32(28, sampleRate * 2, true); view.setUint16(32, 2, true); view.setUint16(34, 16, true);
+    ws(36, 'data'); view.setUint32(40, int16.length * 2, true);
     let off = 44;
-    for (let i = 0; i < data.length; i++) { view.setInt16(off, data[i], true); off += 2; }
-    return URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }));
+    for (let i = 0; i < int16.length; i++) { view.setInt16(off, int16[i], true); off += 2; }
+    return buf;
   }
 
   /* ---------------- go ---------------- */
