@@ -276,6 +276,16 @@ app.put('/api/sessions/:id/brands', (req, res) => {
   res.json({ ok: true });
 });
 
+// renombrar (poner un título para reconocer la transcripción después)
+app.put('/api/sessions/:id/title', (req, res) => {
+  if (!idOk(req.params.id)) return res.status(404).json({ error: 'not_found' });
+  if (!db.getSession(req.params.id)) return res.status(404).json({ error: 'not_found' });
+  const title = String((req.body && req.body.title) || '').trim().slice(0, 200);
+  if (!title) return res.status(400).json({ error: 'Título vacío.' });
+  db.updateTitle(req.params.id, title);
+  res.json({ ok: true, title });
+});
+
 /* ---------------- reports (links compartibles) ---------------- */
 const requireSession = (req, res, next) => {
   if (!idOk(req.params.id)) return res.status(404).json({ error: 'Sesión no encontrada o vencida.' });

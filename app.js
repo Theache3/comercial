@@ -73,6 +73,8 @@
     link: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 007.07 0l3-3a5 5 0 00-7.07-7.07l-1.5 1.5"/><path d="M14 11a5 5 0 00-7.07 0l-3 3a5 5 0 007.07 7.07l1.5-1.5"/></svg>`,
     copy: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 012-2h10"/></svg>`,
     trash: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/></svg>`,
+    edit: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z"/></svg>`,
+    library: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg>`,
     karaoke: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h11M4 12h7M4 17h14"/></svg>`,
     spinner: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 3a9 9 0 109 9" opacity="0.9"/></svg>`,
   };
@@ -106,7 +108,7 @@
     // persistencia (backend): sesión guardada 21 días desde la carga del audio
     sessionId: null, sessionExpiresAt: null, sessionSaving: false, sessionError: false,
     // upload staging (varios audios → se concatenan y transcriben)
-    pendingAudios: [], _userOrdered: false,
+    pendingAudios: [], _userOrdered: false, uploadTitle: '',
     processingError: null, _pollT: 0,
     uploadError: false, uploadErrorMsg: '',
   };
@@ -161,10 +163,14 @@
     audioInput.addEventListener('change', e => { acceptAudios(e.target.files); e.target.value = ''; });
     document.body.append(audioInput);
 
-    audio.src = makeSampleAudio(state.segments);
-    state.audioUrl = audio.src;
+    bootInitial();
+  }
 
-    renderApp();
+  // Al abrir: restaura el último audio cargado (localStorage); si no hay o falla, carga el demo.
+  function bootInitial() {
+    let last = null;
+    try { last = localStorage.getItem('vm_lastSession'); } catch (_) {}
+    if (last) openSession(last); else loadSample();
   }
 
   /* ============================================================
@@ -206,12 +212,15 @@
 
     const right = h('div', { style: { display: 'flex', alignItems: 'center', gap: '12px' } });
     if (state.view === 'main') {
-      const chip = h('div', { style: {
+      const canRename = !!state.sessionId;
+      const chip = h('div', { onClick: canRename ? renameCurrent : null, title: canRename ? 'Renombrar este audio' : '', style: {
         display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 12px', background: 'var(--gray-50)',
-        border: '1px solid var(--gray-200)', borderRadius: '999px', fontSize: '13px', color: 'var(--gray-600)', maxWidth: '320px',
+        border: '1px solid var(--gray-200)', borderRadius: '999px', fontSize: '13px', color: 'var(--gray-600)', maxWidth: '360px',
+        cursor: canRename ? 'pointer' : 'default',
       } },
         svg(I.wave('var(--brand-500)')),
         h('span', { style: { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: '500', color: 'var(--gray-700)' } }, state.fileName),
+        canRename ? h('span', { style: { display: 'flex', color: 'var(--gray-400)', flex: 'none' } }, svg(I.edit)) : null,
       );
       right.appendChild(chip);
       const save = h('div', { style: { fontSize: '12px', fontWeight: '600', whiteSpace: 'nowrap' } });
@@ -225,6 +234,11 @@
       } }, svg(I.trash), 'Descartar audio');
       right.appendChild(discardBtn);
     }
+    const libBtn = h('div', { class: 'tb-btn', onClick: goUpload, title: 'Ver tus audios / transcripciones', style: {
+      display: 'inline-flex', alignItems: 'center', gap: '7px', padding: '8px 14px', border: '1px solid var(--gray-300)',
+      borderRadius: '6px', fontSize: '13px', fontWeight: '600', color: 'var(--gray-700)', cursor: 'pointer', background: '#fff',
+    } }, svg(I.library), 'Mis audios');
+    right.appendChild(libBtn);
     const newBtn = h('div', { class: 'tb-btn', onClick: goUpload, style: {
       display: 'inline-flex', alignItems: 'center', gap: '7px', padding: '8px 14px', border: '1px solid var(--gray-300)',
       borderRadius: '6px', fontSize: '13px', fontWeight: '600', color: 'var(--gray-700)', cursor: 'pointer', background: '#fff',
@@ -295,6 +309,12 @@
           () => audioInput.click(), (e) => { e.preventDefault(); acceptAudios(e.dataTransfer.files); })),
     ];
     if (audios.length) {
+      const titleInput = h('input', { class: 'brand-input', value: state.uploadTitle, placeholder: 'Título (opcional, para reconocerlo después)', style: {
+        width: '100%', marginTop: '16px', padding: '9px 12px', border: '1px solid var(--gray-300)', borderRadius: '6px',
+        fontFamily: 'var(--font-sans)', fontSize: '14px', color: 'var(--gray-800)', outline: 'none',
+      } });
+      titleInput.addEventListener('input', e => { state.uploadTitle = e.target.value; });
+      cardKids.push(titleInput);
       cardKids.push(h('div', { style: { fontSize: '12px', color: 'var(--gray-500)', margin: '16px 0 8px' } },
         audios.length + (audios.length === 1 ? ' audio' : ' audios') + ' · arrastrá para reordenar (se unen en este orden)'));
       const list = h('div', { style: { display: 'flex', flexDirection: 'column', gap: '6px' } });
@@ -327,8 +347,8 @@
 
     const recentList = h('div', {});
     const recentWrap = h('div', { style: { display: 'none', width: '560px', maxWidth: '100%', marginTop: '20px' } },
-      h('div', { style: { fontSize: '14px', fontWeight: '700', color: 'var(--gray-700)' } }, 'Audios recientes'),
-      h('div', { style: { fontSize: '12px', color: 'var(--gray-500)', margin: '3px 0 12px' } }, 'Se borran automáticamente a los 21 días de cargados.'),
+      h('div', { style: { fontSize: '14px', fontWeight: '700', color: 'var(--gray-700)' } }, 'Tus transcripciones'),
+      h('div', { style: { fontSize: '12px', color: 'var(--gray-500)', margin: '3px 0 12px' } }, 'Los audios que cargaste. Se borran automáticamente a los 21 días.'),
       recentList,
     );
     refs.recentWrap = recentWrap; refs.recent = recentList;
@@ -895,7 +915,8 @@
   async function confirmUpload() {
     const files = state.pendingAudios || [];
     if (!files.length) { state.uploadError = true; state.uploadErrorMsg = 'Agregá al menos un audio.'; renderApp(); return; }
-    const programName = files.length === 1 ? baseName(files[0].name) : (baseName(files[0].name) + ' (+' + (files.length - 1) + ')');
+    const title = (state.uploadTitle || '').trim();
+    const programName = title || (files.length === 1 ? baseName(files[0].name) : (baseName(files[0].name) + ' (+' + (files.length - 1) + ')'));
     Object.assign(state, { view: 'processing', processingError: null, sessionId: null, fileName: programName });
     clearTimeout(state._pollT);
     renderApp();
@@ -908,6 +929,7 @@
       if (!res.ok) throw new Error('http ' + res.status);
       const data = await res.json();
       state.sessionId = data.id;
+      try { localStorage.setItem('vm_lastSession', data.id); } catch (_) {}
       if (data.status === 'ready') { openSession(data.id); return; }
       pollProcessing(data.id);
     } catch (e) {
@@ -946,7 +968,7 @@
       duration: segs[segs.length - 1].end, currentTime: 0, isPlaying: false,
       segmentStart: null, segmentEnd: null, flashSeg: -1, activeAppKey: null, decodedBuffer: null,
       sessionId: null, sessionExpiresAt: null, sessionSaving: false, sessionError: false, _persisting: null,
-      pendingAudios: [], _userOrdered: false, processingError: null, uploadError: false,
+      pendingAudios: [], _userOrdered: false, uploadTitle: '', processingError: null, uploadError: false,
     });
     renderApp();
   }
@@ -1053,13 +1075,33 @@
     const processing = st === 'processing', errored = st === 'error';
     const sub = processing ? 'Transcribiendo…'
       : errored ? 'No se pudo transcribir'
-      : (s.segmentCount + ' segmentos · ' + s.brandCount + (s.brandCount === 1 ? ' marca' : ' marcas') + ' · vence ' + shortDate(s.expiresAt));
+      : ('cargado ' + shortDate(s.createdAt) + ' · ' + s.segmentCount + ' segmentos · vence ' + shortDate(s.expiresAt));
     const onClick = processing ? () => { Object.assign(state, { view: 'processing', sessionId: s.id, processingError: null, pendingAudios: [] }); renderApp(); pollProcessing(s.id); }
       : errored ? () => discardRecent(s.id)
       : () => openSession(s.id);
-    const right = processing
-      ? svg('<svg class="mspin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--brand-500)" stroke-width="2.5" stroke-linecap="round"><path d="M12 3a9 9 0 1 0 9 9" opacity="0.9"/></svg>')
-      : h('div', { style: { flex: 'none', fontSize: '12px', fontWeight: '600', color: errored ? 'var(--red-600)' : 'var(--brand-600)' } }, errored ? 'Quitar' : 'Abrir →');
+
+    let right;
+    if (processing) {
+      right = svg('<svg class="mspin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--brand-500)" stroke-width="2.5" stroke-linecap="round"><path d="M12 3a9 9 0 1 0 9 9" opacity="0.9"/></svg>');
+    } else if (errored) {
+      right = h('div', { style: { flex: 'none', fontSize: '12px', fontWeight: '600', color: 'var(--red-600)' } }, 'Quitar');
+    } else {
+      const iconBtn = (icon, title, fn, danger) => {
+        const b = h('button', { class: danger ? 'chip-x' : 'copy-btn', title, style: {
+          flex: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', width: '28px', height: '28px',
+          border: danger ? '0' : '1px solid var(--gray-200)', borderRadius: '6px',
+          background: danger ? 'var(--gray-100)' : '#fff', color: danger ? 'var(--gray-500)' : 'var(--gray-600)', cursor: 'pointer', padding: '0',
+        } }, svg(icon));
+        b.addEventListener('click', (e) => { e.stopPropagation(); fn(); });
+        return b;
+      };
+      right = h('div', { style: { flex: 'none', display: 'flex', alignItems: 'center', gap: '6px' } },
+        iconBtn(I.edit, 'Renombrar', () => renameSession(s.id, s.fileName)),
+        iconBtn(I.trash, 'Borrar', () => { if (window.confirm('¿Borrar "' + s.fileName + '" y sus reportes? No se puede deshacer.')) discardRecent(s.id); }, true),
+        h('div', { style: { fontSize: '12px', fontWeight: '600', color: 'var(--brand-600)', paddingLeft: '2px' } }, 'Abrir →'),
+      );
+    }
+
     return h('div', { class: 'recent-row', onClick, style: {
       display: 'flex', alignItems: 'center', gap: '12px', padding: '11px 14px', background: '#fff',
       border: '1px solid var(--gray-200)', borderRadius: '8px', cursor: 'pointer', marginBottom: '8px', transition: 'background .15s, border-color .15s',
@@ -1074,8 +1116,27 @@
   }
   async function discardRecent(id) {
     try { await fetch(API_BASE + '/api/sessions/' + id, { method: 'DELETE' }); } catch (_) {}
+    try { if (localStorage.getItem('vm_lastSession') === id) localStorage.removeItem('vm_lastSession'); } catch (_) {}
     loadRecentSessions();
   }
+
+  // Renombrar una transcripción (poner un título para reconocerla).
+  async function renameSession(id, current) {
+    const t = window.prompt('Título de la transcripción:', current || '');
+    if (t == null) return;
+    const title = t.trim();
+    if (!title || title === current) return;
+    try {
+      const res = await fetch(API_BASE + '/api/sessions/' + id + '/title', {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title }),
+      });
+      if (!res.ok) throw new Error('http');
+      if (state.sessionId === id) { state.fileName = title; if (state.view === 'main') renderApp(); }
+      if (refs.recentWrap) loadRecentSessions();
+      toast('Título actualizado.');
+    } catch (e) { toast('No se pudo renombrar.', true); }
+  }
+  function renameCurrent() { if (state.sessionId) renameSession(state.sessionId, state.fileName); }
 
   // Reabre una sesión guardada (audio servido por el backend). Maneja estados processing/error.
   async function openSession(id) {
@@ -1096,8 +1157,9 @@
         duration: s.duration || (segs.length ? segs[segs.length - 1].end : 0), currentTime: 0, isPlaying: false,
         segmentStart: null, segmentEnd: null, flashSeg: -1, activeAppKey: null, decodedBuffer: null,
         brands, sessionId: s.id, sessionExpiresAt: s.expiresAt, sessionSaving: false, sessionError: false, _persisting: null,
-        pendingAudios: [], _userOrdered: false, processingError: null, uploadError: false,
+        pendingAudios: [], _userOrdered: false, uploadTitle: '', processingError: null, uploadError: false,
       });
+      try { localStorage.setItem('vm_lastSession', s.id); } catch (_) {}
       renderApp();
     } catch (e) {
       state.uploadError = true;
@@ -1115,7 +1177,10 @@
       : '¿Descartar el audio cargado?';
     if (!window.confirm(msg)) return;
     const id = state.sessionId;
-    if (id) { try { await fetch(API_BASE + '/api/sessions/' + id, { method: 'DELETE' }); } catch (e) {} }
+    if (id) {
+      try { await fetch(API_BASE + '/api/sessions/' + id, { method: 'DELETE' }); } catch (e) {}
+      try { if (localStorage.getItem('vm_lastSession') === id) localStorage.removeItem('vm_lastSession'); } catch (_) {}
+    }
     if (audio) { audio.pause(); try { audio.removeAttribute('src'); audio.load(); } catch (e) {} }
     segGate = null; styledActive = -1; lastScrolled = -1; nextColor = 0;
     Object.assign(state, {
@@ -1123,7 +1188,7 @@
       duration: 0, currentTime: 0, isPlaying: false, segmentStart: null, segmentEnd: null,
       flashSeg: -1, activeAppKey: null, decodedBuffer: null,
       sessionId: null, sessionExpiresAt: null, sessionSaving: false, sessionError: false, _persisting: null,
-      pendingAudios: [], _userOrdered: false, processingError: null, uploadError: false,
+      pendingAudios: [], _userOrdered: false, uploadTitle: '', processingError: null, uploadError: false,
     });
     renderApp();
     toast('Audio descartado.');

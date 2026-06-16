@@ -74,6 +74,7 @@ const _listSessions = db.prepare(`
   FROM sessions WHERE expires_at > ? ORDER BY created_at DESC LIMIT 200
 `);
 const _updateBrands = db.prepare(`UPDATE sessions SET brands_json = ? WHERE id = ?`);
+const _updateTitle = db.prepare(`UPDATE sessions SET file_name = ? WHERE id = ?`);
 const _updateStatus = db.prepare(`UPDATE sessions SET status = @status, error_msg = @error_msg WHERE id = @id`);
 const _setResult = db.prepare(`UPDATE sessions SET status = 'ready', error_msg = NULL, audio_file = @audio_file, audio_mime = @audio_mime, transcript_json = @transcript_json, duration = @duration WHERE id = @id`);
 const _failStale = db.prepare(`UPDATE sessions SET status = 'error', error_msg = 'Interrumpido por reinicio del servidor' WHERE status = 'processing'`);
@@ -99,6 +100,7 @@ function getSession(id, now = Date.now()) {
 }
 function listSessions(now = Date.now()) { return _listSessions.all(now); }
 function updateBrands(id, brandsJson) { return _updateBrands.run(brandsJson, id).changes > 0; }
+function updateTitle(id, fileName) { return _updateTitle.run(fileName, id).changes > 0; }
 
 /* ---------------- reports ---------------- */
 const _insertReport = db.prepare(`
@@ -138,7 +140,7 @@ function deleteExpiredRows(now = Date.now()) {
 module.exports = {
   db,
   DATA_DIR, SESSIONS_DIR, REPORTS_DIR,
-  createSession, getSession, listSessions, updateBrands,
+  createSession, getSession, listSessions, updateBrands, updateTitle,
   updateSessionStatus, setSessionResult, failStaleProcessing,
   createReport, getReport,
   reportTokensForSession, deleteSession,
