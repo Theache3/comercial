@@ -70,9 +70,9 @@
     xThin: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M5 5l14 14M19 5L5 19"/></svg>`,
     gauge: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 13l3.5-3.5"/><path d="M4 19a8 8 0 1116 0"/></svg>`,
     download: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11M7.5 10.5L12 15l4.5-4.5M5 20h14"/></svg>`,
-    send: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4 20-7z"/></svg>`,
     link: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 007.07 0l3-3a5 5 0 00-7.07-7.07l-1.5 1.5"/><path d="M14 11a5 5 0 00-7.07 0l-3 3a5 5 0 007.07 7.07l1.5-1.5"/></svg>`,
     copy: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 012-2h10"/></svg>`,
+    trash: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/></svg>`,
     karaoke: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h11M4 12h7M4 17h14"/></svg>`,
     spinner: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 3a9 9 0 109 9" opacity="0.9"/></svg>`,
   };
@@ -217,6 +217,13 @@
       const save = h('div', { style: { fontSize: '12px', fontWeight: '600', whiteSpace: 'nowrap' } });
       refs.saveStatus = save;
       right.appendChild(save);
+    }
+    if (state.view === 'main') {
+      const discardBtn = h('div', { class: 'discard-btn', onClick: discardAudio, title: 'Descartar el audio cargado (lo borra del servidor)', style: {
+        display: 'inline-flex', alignItems: 'center', gap: '7px', padding: '8px 14px', border: '1px solid var(--gray-300)',
+        borderRadius: '6px', fontSize: '13px', fontWeight: '600', color: 'var(--gray-700)', cursor: 'pointer', background: '#fff',
+      } }, svg(I.trash), 'Descartar audio');
+      right.appendChild(discardBtn);
     }
     const newBtn = h('div', { class: 'tb-btn', onClick: goUpload, style: {
       display: 'inline-flex', alignItems: 'center', gap: '7px', padding: '8px 14px', border: '1px solid var(--gray-300)',
@@ -460,15 +467,9 @@
         padding: '8px 10px', border: '0', borderRadius: '6px', background: 'var(--brand-500)',
         color: '#fff', fontFamily: 'var(--font-sans)', fontSize: '13px', fontWeight: '600', cursor: 'pointer',
       } }, svg(I.link), 'Generar link de reporte');
-      const sendBtn = h('button', { class: 'send-btn', style: {
-        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px', width: '100%',
-        padding: '8px 10px', border: '1px solid var(--brand-300)', borderRadius: '6px', background: 'var(--brand-50)',
-        color: 'var(--brand-700)', fontFamily: 'var(--font-sans)', fontSize: '13px', fontWeight: '600', cursor: 'pointer',
-      } }, svg(I.send), 'Descargar HTML (offline)');
       const result = h('div', { style: { display: 'none' } });
       linkBtn.addEventListener('click', () => generateReport(b, bi, apps, linkBtn, result));
-      sendBtn.addEventListener('click', () => exportBrand(b, bi, apps, sendBtn));
-      card.appendChild(h('div', { style: { padding: '8px 8px 0', display: 'flex', flexDirection: 'column', gap: '6px' } }, linkBtn, sendBtn, result));
+      card.appendChild(h('div', { style: { padding: '8px 8px 0', display: 'flex', flexDirection: 'column', gap: '6px' } }, linkBtn, result));
 
       const body = h('div', { style: { padding: '6px' } });
       apps.forEach(ap => {
@@ -998,6 +999,28 @@
     }
   }
 
+  // Descarta el audio cargado: lo borra del backend (sesión + reportes) y vuelve a la pantalla de carga.
+  async function discardAudio() {
+    const hasSession = !!state.sessionId;
+    const msg = hasSession
+      ? '¿Descartar este audio? Se borra del servidor junto con los reportes ya generados para sus marcas. Esta acción no se puede deshacer.'
+      : '¿Descartar el audio cargado?';
+    if (!window.confirm(msg)) return;
+    const id = state.sessionId;
+    if (id) { try { await fetch(API_BASE + '/api/sessions/' + id, { method: 'DELETE' }); } catch (e) {} }
+    if (audio) { audio.pause(); try { audio.removeAttribute('src'); audio.load(); } catch (e) {} }
+    segGate = null; styledActive = -1; lastScrolled = -1; nextColor = 0;
+    Object.assign(state, {
+      view: 'upload', fileName: '', audioUrl: '', segments: [], brands: [],
+      duration: 0, currentTime: 0, isPlaying: false, segmentStart: null, segmentEnd: null,
+      flashSeg: -1, activeAppKey: null, decodedBuffer: null,
+      sessionId: null, sessionExpiresAt: null, sessionSaving: false, sessionError: false, _persisting: null,
+      pendingAudioUrl: '', pendingAudioName: '', pendingSegments: null, pendingJsonName: '', uploadError: false,
+    });
+    renderApp();
+    toast('Audio descartado.');
+  }
+
   /* ============================================================
      TEXT MATCHING (case-insensitive, accent-insensitive, word-bounded)
   ============================================================ */
@@ -1134,9 +1157,9 @@
   /* ============================================================
      EXPORT & SHARE
      - exportCSV: todas las menciones a CSV.
-     - exportBrand: un .html autocontenido por marca, con cada
-       mención recortada a su propio audio (clip) embebido. La marca
-       solo ve y escucha SUS fragmentos (aislamiento estructural).
+     - buildBrandClips / generateReport: recorta los clips de cada marca en el
+       browser y los sube al backend; devuelve el link público del reporte (la
+       marca solo ve y escucha SUS fragmentos — aislamiento estructural).
   ============================================================ */
   function slugify(s) {
     return (normSameLen(s) || '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'audio';
@@ -1144,10 +1167,6 @@
   function baseName(name) { return (name || '').replace(/\.[^.]+$/, ''); }
   function pad2(n) { return (n < 10 ? '0' : '') + n; }
   function todayISO() { const d = new Date(); return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()); }
-  function todayLong() {
-    const meses = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
-    const d = new Date(); return d.getDate() + ' de ' + meses[d.getMonth()] + ' de ' + d.getFullYear();
-  }
   function downloadBlob(content, filename, type) {
     const blob = content instanceof Blob ? content : new Blob([content], { type: type || 'application/octet-stream' });
     const url = URL.createObjectURL(blob);
@@ -1155,8 +1174,6 @@
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 2000);
   }
-  function escHtml(s) { return String(s).replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch])); }
-
   function csvCell(v) { const s = v == null ? '' : String(v); return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; }
   function exportCSV() {
     const mc = computeMatches();
@@ -1172,11 +1189,6 @@
     downloadBlob(BOM + csv, 'menciones_' + slugify(baseName(state.fileName)) + '_' + todayISO() + '.csv', 'text/csv;charset=utf-8');
   }
 
-  function abToBase64(buf) {
-    const bytes = new Uint8Array(buf); let bin = ''; const chunk = 0x8000;
-    for (let i = 0; i < bytes.length; i += chunk) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
-    return btoa(bin);
-  }
   // Clip [start,end] (+pad seconds) of an AudioBuffer to a mono 16-bit WAV (<= targetSR).
   function clipToWav(buffer, start, end, pad, targetSR) {
     const sr = buffer.sampleRate, ch = buffer.numberOfChannels;
@@ -1238,36 +1250,6 @@
     return { fragments, noAudio };
   }
 
-  async function exportBrand(brand, bi, apps, btn) {
-    if (btn && btn._busy) return;
-    const setBtn = (html, busy) => { if (!btn) return; btn.innerHTML = html; btn.style.opacity = busy ? '0.7' : '1'; btn.style.cursor = busy ? 'default' : 'pointer'; btn._busy = !!busy; };
-    const orig = btn ? (btn._origHtml || (btn._origHtml = btn.innerHTML)) : null;
-    const restore = () => { if (btn) clearTimeout(btn._restoreT); setBtn(orig, false); };
-    if (btn) clearTimeout(btn._restoreT);
-    setBtn('Generando…', true);
-    try {
-      const { fragments, noAudio } = await buildBrandClips(brand, apps);
-      // para el HTML autocontenido, los clips se embeben como base64
-      const htmlFrags = fragments.map(f => ({
-        t: f.t, dur: f.dur, text: f.text, ranges: f.ranges,
-        audioUri: f.wav ? 'data:audio/wav;base64,' + abToBase64(f.wav) : null,
-      }));
-      const approxMB = htmlFrags.reduce((a, f) => a + (f.audioUri ? f.audioUri.length : 0), 0) / (1024 * 1024);
-      if (approxMB > 20 && !window.confirm('El archivo de ' + brand.term + ' pesa ~' + approxMB.toFixed(1) + ' MB y puede ser difícil de enviar por email. ¿Descargar igual?')) {
-        restore(); return;
-      }
-
-      const html = buildShareHtml(brand, htmlFrags, apps.length, noAudio);
-      const fname = 'menciones_' + slugify(brand.term) + '_' + slugify(baseName(state.fileName)) + '_' + todayISO() + '.html';
-      downloadBlob(html, fname, 'text/html;charset=utf-8');
-      setBtn('✓ Archivo generado', false);
-      if (btn) btn._restoreT = setTimeout(() => setBtn(orig, false), 2400);
-    } catch (e) {
-      restore();
-      window.alert('No se pudo generar el archivo para ' + brand.term + '.' + (e && e.message ? '\n' + e.message : ''));
-    }
-  }
-
   // Genera el reporte hosteado de una marca: recorta clips en el browser, los
   // sube al backend y muestra la URL pública (token, sin login, vence con la sesión).
   async function generateReport(brand, bi, apps, btn, resultEl) {
@@ -1327,104 +1309,6 @@
       h('a', { href: url, target: '_blank', rel: 'noopener', class: 'link-sample', style: { color: 'var(--brand-600)', fontWeight: '600', textDecoration: 'none' } }, 'Abrir'),
     );
     el.append(h('div', { style: { display: 'flex', gap: '6px' } }, input, copyBtn), note);
-  }
-
-  const RADIOMITRE_LOGO = '<svg xmlns="http://www.w3.org/2000/svg" class="logo" viewBox="0 0 56.706 31.24">'
-    + '<path d="M15.5,85.117l2.291-10.94h4.376l1.493,6.564L27.676,74.1h4.4L29.735,85.091H26.208l.952-4.865-3.089,4.917H21.266l-.952-5.1-1.133,5.071Z" transform="translate(-15.5 -56.115)" fill="#fff"></path>'
-    + '<path d="M79.781,85.588H76.1L78.211,74.7h3.681Z" transform="translate(-60.398 -56.562)" fill="#fff"></path>'
-    + '<path d="M112.549,74.4H101.763l-.463,2.368h3.5l-1.725,8.6h3.758l1.75-8.6h3.5Z" transform="translate(-79.051 -56.339)" fill="#fff"></path>'
-    + '<path d="M152.559,78.121a3.068,3.068,0,0,0-2.111-3.295l-8.237-.026L140.1,85.688h3.681l1.673-8.675h2.626a1.325,1.325,0,0,1,1.055,1.364c.129,1.21-1.236,1.725-1.236,1.725l-2.806-.026,3.5,7.8,3.861-.026-2.188-6.023A3.756,3.756,0,0,0,152.559,78.121Z" transform="translate(-107.783 -56.636)" fill="#fff"></path>'
-    + '<path d="M199.6,76.991l.515-2.291h-9.807L188.2,85.588h9.988l.541-2.368h-6.744l.438-2.291h5.534l.412-2.265h-4.2l-1.544,1.313-.077.36.644-3.346Z" transform="translate(-143.412 -56.562)" fill="#fff"></path>'
-    + '<path d="M50.2,21.692S58,12.657,76.25,5.115c0,0,.978-.618.618.515,0,0-3.166,4.633-4.556,6.126,0,0-.36.515.257.36a51.689,51.689,0,0,1,9.293-4.659s.515-.077.515.18c0,0-1.055,5.1-1.931,5.689a.258.258,0,0,0,.36.257,43.173,43.173,0,0,1,13.231-2.806l.257.18S78.515,15.514,77.1,17.625c0,0-1.133.077-.8-.618,0,0,1.055-4.479,1.673-4.994,0,0-9.91,6.307-11.583,5.972,0,0-.8.1-.257-.7a30.481,30.481,0,0,1,2.445-5.534s-15.084,7-17.53,9.653C51.075,21.435,50.921,21.949,50.2,21.692Z" transform="translate(-40.936 -4.947)" fill="#ea0a1f"></path>'
-    + '</svg>';
-  const PLAY_SVG = '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
-  const PLAY_SVG_SM = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
-  const LOCK_SVG = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 018 0v3"/></svg>';
-  const SHARE_SCRIPT = "(function(){var P='" + PLAY_SVG + "',U='<svg width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"currentColor\"><path d=\"M6 5h4v14H6zM14 5h4v14h-4z\"/></svg>';"
-    + "var rows=[].slice.call(document.querySelectorAll('.frag'));"
-    + "var au=rows.map(function(r){return r.querySelector('audio');}),bt=rows.map(function(r){return r.querySelector('.play');});"
-    + "var cur=-1,chain=false;"
-    + "function stop(i){if(i<0||!au[i])return;au[i].pause();au[i].currentTime=0;bt[i].classList.remove('playing');bt[i].innerHTML=P;}"
-    + "function play(i){if(!au[i])return;if(cur!==-1&&cur!==i)stop(cur);cur=i;au[i].play();bt[i].classList.add('playing');bt[i].innerHTML=U;}"
-    + "bt.forEach(function(b,i){if(!au[i])return;b.addEventListener('click',function(){if(cur===i&&!au[i].paused){au[i].pause();bt[i].classList.remove('playing');bt[i].innerHTML=P;}else{chain=false;play(i);}});});"
-    + "au.forEach(function(a,i){if(!a)return;a.addEventListener('ended',function(){stop(i);if(chain){var n=i+1;while(n<au.length&&!au[n])n++;if(n<au.length)play(n);else chain=false;}});});"
-    + "var pa=document.getElementById('playall');if(pa)pa.addEventListener('click',function(){chain=true;var f=0;while(f<au.length&&!au[f])f++;if(f<au.length)play(f);});"
-    + "})();";
-
-  function frHtml(text, ranges, color) {
-    let html = '', pos = 0;
-    for (const r of ranges) {
-      if (r.start < pos) continue;
-      if (r.start > pos) html += escHtml(text.slice(pos, r.start));
-      html += '<mark style="background:' + color.bg + ';color:' + color.fg + ';box-shadow:inset 0 -2px 0 ' + color.line + ';border-radius:3px;padding:0.5px 3px;font-weight:700;">' + escHtml(text.slice(r.start, r.end)) + '</mark>';
-      pos = r.end;
-    }
-    if (pos < text.length) html += escHtml(text.slice(pos));
-    return html || escHtml(text);
-  }
-
-  function buildShareHtml(brand, fragments, mentionCount, noAudio) {
-    const c = brand.color;
-    const fragCount = fragments.length;
-    const totalSec = fragments.reduce((a, f) => a + f.dur, 0);
-    const hasAudio = !noAudio && fragments.some(f => f.audioUri);
-    const summary = (mentionCount === fragCount)
-      ? (mentionCount + (mentionCount === 1 ? ' mención' : ' menciones'))
-      : (mentionCount + ' menciones en ' + fragCount + (fragCount === 1 ? ' fragmento' : ' fragmentos'));
-    const rows = fragments.map((f) => `
-      <li class="frag">
-        <button class="play" ${f.audioUri ? '' : 'disabled'} aria-label="Reproducir">${f.audioUri ? PLAY_SVG : LOCK_SVG}</button>
-        <div class="body">
-          <span class="time">${f.t}</span>
-          <p class="text">${frHtml(f.text, f.ranges, c)}</p>
-          ${f.audioUri ? `<audio preload="none" src="${f.audioUri}"></audio>` : '<span class="noaudio">Audio no disponible — verificar contra la emisión original.</span>'}
-        </div>
-      </li>`).join('');
-
-    return `<!DOCTYPE html>
-<html lang="es"><head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Menciones de ${escHtml(brand.term)} — ${escHtml(state.fileName)}</title>
-<style>
-  :root{--brand:#319795;--brand-d:#2C7A7B;--ink:#1A202C;--muted:#4A5568;--sub:#718096;--line:#E2E8F0;--bg:#F7FAFC;--card:#fff}
-  *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-family:'Roboto',system-ui,-apple-system,'Segoe UI',Arial,sans-serif;line-height:1.5}
-  .wrap{max-width:760px;margin:0 auto;padding:28px 20px 60px}
-  .bar{display:flex;align-items:center;gap:12px;background:var(--ink);color:#fff;border-radius:8px;padding:12px 16px}
-  .bar .logo{height:22px;width:auto}
-  .head{background:var(--card);border:1px solid var(--line);border-radius:10px;box-shadow:0 4px 6px -1px rgba(0,0,0,.1),0 2px 4px -1px rgba(0,0,0,.06);padding:22px 24px;margin-top:14px}
-  .brand{display:flex;align-items:center;gap:10px;font-size:22px;font-weight:800}
-  .dot{width:14px;height:14px;border-radius:50%;flex:none}
-  .meta{color:var(--sub);font-size:13px;margin-top:6px}
-  .chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
-  .chip{font-size:12px;font-weight:700;padding:4px 10px;border-radius:999px;background:#EDF2F7;color:var(--muted)}
-  .playall{margin-top:16px;display:inline-flex;align-items:center;gap:8px;background:var(--brand);color:#fff;border:0;border-radius:6px;padding:9px 14px;font-family:inherit;font-size:14px;font-weight:600;cursor:pointer}
-  .playall:hover{background:var(--brand-d)}
-  .banner{margin-top:14px;padding:10px 12px;background:#FFF5F5;border:1px solid #FEB2B2;border-radius:6px;color:#C53030;font-size:13px}
-  ol.frags{list-style:none;margin:18px 0 0;padding:0;display:flex;flex-direction:column;gap:10px}
-  .frag{display:flex;gap:12px;align-items:flex-start;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:12px 14px}
-  .play{flex:none;width:40px;height:40px;border-radius:50%;border:0;background:var(--brand);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer}
-  .play:hover{background:var(--brand-d)}.play:disabled{background:#CBD5E0;cursor:not-allowed}.play.playing{background:var(--brand-d)}
-  .body{flex:1;min-width:0}
-  .time{display:inline-block;font-variant-numeric:tabular-nums;font-size:12px;font-weight:700;color:var(--brand-d);background:#E6FFFA;border-radius:4px;padding:2px 8px}
-  .text{margin:7px 0 0;font-size:15px;color:#2D3748}
-  .noaudio{display:block;margin-top:6px;font-size:12px;color:var(--sub)}
-  footer{margin-top:26px;text-align:center;color:var(--sub);font-size:12px}
-  @media print{body{background:#fff}.play,.playall{display:none!important}.frag,.head{box-shadow:none;break-inside:avoid}.bar{background:#fff;color:var(--ink);border:1px solid var(--line)}}
-</style></head><body>
-<div class="wrap">
-  <div class="bar">${RADIOMITRE_LOGO}<div><div style="font-weight:700;font-size:14px">Radio Mitre</div><div style="font-size:12px;color:rgba(255,255,255,.7)">Verificador de menciones al aire</div></div></div>
-  <div class="head">
-    <div class="brand"><span class="dot" style="background:${c.dot};box-shadow:0 0 0 3px ${c.bg}"></span>${escHtml(brand.term)}</div>
-    <div class="meta">${escHtml(state.fileName)} · ${todayLong()}</div>
-    <div class="chips"><span class="chip">${summary}</span><span class="chip">${fmt(totalSec)} de audio</span></div>
-    ${hasAudio ? '<button class="playall" id="playall">' + PLAY_SVG_SM + ' Reproducir todo</button>' : ''}
-    ${noAudio ? '<div class="banner">No se pudo procesar el audio; este documento incluye solo los textos y horarios de cada mención.</div>' : ''}
-  </div>
-  <ol class="frags">${rows}</ol>
-  <footer>Generado el ${todayLong()} · Radio Mitre — Verificador de menciones</footer>
-</div>
-<script>${SHARE_SCRIPT}</script>
-</body></html>`;
   }
 
   /* ============================================================

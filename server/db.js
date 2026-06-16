@@ -88,6 +88,13 @@ function getReport(token, now = Date.now()) {
   return r;
 }
 
+/* ---------------- borrar una sesión (descartar audio) ---------------- */
+const _reportTokensBySession = db.prepare(`SELECT token FROM reports WHERE session_id = ?`);
+const _delReportsBySession = db.prepare(`DELETE FROM reports WHERE session_id = ?`);
+const _delSession = db.prepare(`DELETE FROM sessions WHERE id = ?`);
+function reportTokensForSession(id) { return _reportTokensBySession.all(id).map(r => r.token); }
+function deleteSession(id) { _delReportsBySession.run(id); return _delSession.run(id).changes; }
+
 /* ---------------- cleanup (vencidos) ---------------- */
 const _expiredSessions = db.prepare(`SELECT id FROM sessions WHERE expires_at <= ?`);
 const _expiredReports = db.prepare(`SELECT token FROM reports WHERE expires_at <= ?`);
@@ -107,5 +114,6 @@ module.exports = {
   DATA_DIR, SESSIONS_DIR, REPORTS_DIR,
   createSession, getSession, listSessions, updateBrands,
   createReport, getReport,
+  reportTokensForSession, deleteSession,
   expiredSessionIds, expiredReportTokens, deleteExpiredRows,
 };

@@ -26,40 +26,17 @@ La búsqueda es **case-insensitive**, **ignora acentos** y matchea la marca **co
 
 ## Compartir a cada marca sus menciones
 
-Cada tarjeta de marca tiene **dos** formas de compartir, ambas con **aislamiento estructural**: la
-marca solo ve y escucha **sus propios fragmentos** (cada mención recortada a su clip), nunca la
+Cada tarjeta de marca tiene el botón **"Generar link de reporte"**, con **aislamiento estructural**:
+la marca solo ve y escucha **sus propios fragmentos** (cada mención recortada a su clip), nunca la
 transcripción completa ni otras marcas.
 
-### 1) Generar link de reporte (recomendado)
-
-Botón **"Generar link de reporte"**. Recorta los clips de la marca (en el browser), los sube al
-backend y devuelve una **URL para compartir** (`https://comlog.cienradios.com/r/<token>`). La
-marca abre el link en cualquier navegador o celular y ve una **página standalone** (sin ningún link
-interno a la herramienta) con sus menciones: horario (mm:ss), el texto con su marca resaltada, un
-botón para reproducir cada clip y "Reproducir todo". Es **público por token impredecible** (sin
-login) y **vence a los 21 días de cargado el audio**.
-
-### 2) Descargar HTML (offline)
-
-Botón **"Descargar HTML (offline)"**. Genera y descarga un **archivo `.html` autocontenido para esa
-marca**, que el equipo le manda por email al anunciante.
-
-- La marca solo **ve y escucha sus propios fragmentos** — cada mención queda recortada a su
-  propio clip de audio embebido en el archivo. No incluye la transcripción completa ni otras
-  marcas (el aislamiento es **estructural**: el archivo se arma solo con los datos de esa marca).
-- Se abre con doble click en cualquier navegador, **sin instalar nada y sin internet**: muestra
-  la marca, el programa, la fecha, el total de menciones y minutos al aire, y la lista de
-  fragmentos con su horario (mm:ss), el texto con la marca resaltada y un botón para reproducir
-  cada uno (más "Reproducir todo").
-- Sirve también como **constancia**: desde el navegador, *Imprimir → Guardar como PDF* genera
-  un documento prolijo (el PDF pierde el audio, lo cual es esperable para un archivo de respaldo).
-- Si el navegador no puede procesar el audio (codec raro), el archivo igual se genera con los
-  **textos y horarios** y un aviso de "audio no disponible".
-
-**Tamaño / envío:** el peso depende de los **segundos de mención**, no de la duración del
-programa. Una marca típica (~6 fragmentos) pesa ~2 MB; una muy nombrada puede acercarse al
-límite de email (25 MB) — si pasa de ~20 MB, la app avisa antes de descargar. Si el correo
-corporativo bloquea adjuntos `.html`, comprimilo en `.zip` antes de enviarlo.
+Recorta los clips de la marca (en el browser), los sube al backend y devuelve una **URL para
+compartir** (`https://comlog.cienradios.com/r/<token>`). La marca abre el link en cualquier
+navegador o celular y ve una **página standalone** (sin ningún link interno a la herramienta) con
+sus menciones: horario (mm:ss), el texto con su marca resaltada, un botón para reproducir cada clip
+y "Reproducir todo". Es **público por token impredecible** (sin login) y **vence a los 21 días de
+cargado el audio**. Si el navegador no puede procesar el audio (codec raro), el reporte igual queda
+con los **textos y horarios** y un aviso de "audio no disponible".
 
 ## Otras acciones
 
@@ -69,6 +46,9 @@ corporativo bloquea adjuntos `.html`, comprimilo en `.zip` antes de enviarlo.
 - **Palabra por palabra** (arriba de la transcripción): resaltado karaoke palabra por palabra
   mientras suena. Usa los timestamps de palabra del JSON si vienen (Whisper `words`), y si no,
   los aproxima. Se puede apagar; se desactiva solo en transcripciones muy largas (+600 segmentos).
+- **Descartar audio** (arriba a la derecha): borra del servidor el audio cargado **junto con los
+  reportes** ya generados para sus marcas (esos links dejan de funcionar) y vuelve a la pantalla de
+  carga. Pide confirmación; no se puede deshacer.
 
 ## Cargar tu propio audio
 
@@ -106,10 +86,10 @@ cargado, el audio y todos sus reportes se borran solos (el reloj corre **desde l
   (ver `acceptJson` / `confirmUpload` en `app.js`).
 - Maneja audios largos (cientos de segmentos) con `content-visibility` y updates dirigidos
   (sin re-render por frame), para que no se trabe.
-- **Recorte de audio** (para "Enviar a la marca"): se decodifica el audio con `AudioContext`,
-  se recorta cada mención (con ~0,3 s de margen), se baja a mono 16 kHz y se reencoda WAV; los
-  clips se embeben en base64. Nunca se embebe el audio entero (sería imposible de mandar por
-  email). El `writeWav` es compartido con el generador del audio de ejemplo.
+- **Recorte de audio** (para los reportes, en `buildBrandClips`): se decodifica el audio con
+  `AudioContext`, se recorta cada mención (con ~0,3 s de margen), se baja a mono 16 kHz y se reencoda
+  WAV; los clips se **suben al backend** (nunca el audio entero). El `writeWav` es compartido con el
+  generador del audio de ejemplo.
 
 ## Estructura
 

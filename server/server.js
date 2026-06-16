@@ -272,6 +272,18 @@ app.post('/api/sessions/:id/reports', requireSession, assignReportToken, uploadR
   }
 });
 
+// descartar (borrar) una sesión: su audio + todos los reportes generados para sus marcas
+app.delete('/api/sessions/:id', (req, res) => {
+  if (!idOk(req.params.id)) return res.status(404).json({ error: 'not_found' });
+  const id = req.params.id;
+  const tokens = db.reportTokensForSession(id);
+  for (const t of tokens) rmDir(path.join(db.REPORTS_DIR, t));
+  const changes = db.deleteSession(id);
+  rmDir(path.join(db.SESSIONS_DIR, id));
+  if (!changes) return res.status(404).json({ error: 'not_found' });
+  res.json({ ok: true, reportsDeleted: tokens.length });
+});
+
 /* ---------------- frontend estático (herramienta interna) ---------------- */
 app.get('/', (_req, res) => res.sendFile(path.join(ROOT, 'index.html')));
 app.get('/index.html', (_req, res) => res.sendFile(path.join(ROOT, 'index.html')));
