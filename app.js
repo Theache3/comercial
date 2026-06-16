@@ -446,7 +446,7 @@
       ));
     }
 
-    return h('div', { style: { flex: 'none', width: '392px', display: 'flex', flexDirection: 'column', background: 'var(--gray-50)' } }, header, list);
+    return h('div', { style: { flex: 'none', width: 'clamp(460px, 40vw, 760px)', display: 'flex', flexDirection: 'column', background: 'var(--gray-50)' } }, header, list);
   }
 
   function buildBrandCard(b, bi, apps) {
