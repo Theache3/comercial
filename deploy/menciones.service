@@ -1,0 +1,17 @@
+[Unit]
+Description=Verificador de menciones (Node) — Radio Mitre
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/opt/menciones/server
+ExecStart=/usr/bin/node server.js
+Restart=always
+RestartSec=3
+# Tope de memoria: la caja la comparte con el videodownloader (que ya se colgó
+# por OOM una vez). 512M le sobra a este backend (el audio se procesa en el browser).
+MemoryMax=512M
+
+[Install]
+WantedBy=multi-user.target

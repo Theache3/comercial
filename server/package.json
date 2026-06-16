@@ -1,0 +1,19 @@
+{
+  "name": "verificador-menciones-server",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Backend del Verificador de menciones — persistencia 21 días + reportes compartibles por link",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "cleanup": "node cleanup.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.8.0",
+    "express": "^4.21.2",
+    "multer": "^2.0.0"
+  }
+}

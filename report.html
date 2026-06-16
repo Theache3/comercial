@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Menciones · Radio Mitre</title>
+  <meta name="robots" content="noindex, nofollow">
+  <style>
+    :root{
+      --brand:#319795;--brand-d:#2C7A7B;--ink:#1A202C;--muted:#4A5568;--sub:#718096;
+      --line:#E2E8F0;--bg:#F7FAFC;--card:#fff;
+    }
+    *{box-sizing:border-box}
+    html,body{margin:0;padding:0}
+    body{background:var(--bg);color:var(--ink);line-height:1.5;
+      font-family:'Roboto',system-ui,-apple-system,'Segoe UI',Arial,sans-serif;}
+    .wrap{max-width:760px;margin:0 auto;padding:28px 20px 60px}
+    .bar{display:flex;align-items:center;gap:12px;background:var(--ink);color:#fff;border-radius:8px;padding:12px 16px}
+    .bar .logo{height:22px;width:auto}
+    .bar .t1{font-weight:700;font-size:14px}
+    .bar .t2{font-size:12px;color:rgba(255,255,255,.7)}
+
+    .head{background:var(--card);border:1px solid var(--line);border-radius:10px;
+      box-shadow:0 4px 6px -1px rgba(0,0,0,.1),0 2px 4px -1px rgba(0,0,0,.06);padding:22px 24px;margin-top:14px}
+    .brand{display:flex;align-items:center;gap:10px;font-size:22px;font-weight:800}
+    .dot{width:14px;height:14px;border-radius:50%;flex:none}
+    .meta{color:var(--sub);font-size:13px;margin-top:6px}
+    .chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+    .chip{font-size:12px;font-weight:700;padding:4px 10px;border-radius:999px;background:#EDF2F7;color:var(--muted)}
+    .playall{margin-top:16px;display:inline-flex;align-items:center;gap:8px;background:var(--brand);color:#fff;border:0;
+      border-radius:6px;padding:9px 14px;font-family:inherit;font-size:14px;font-weight:600;cursor:pointer}
+    .playall:hover{background:var(--brand-d)}
+    .banner{margin-top:14px;padding:10px 12px;background:#FFF5F5;border:1px solid #FEB2B2;border-radius:6px;color:#C53030;font-size:13px}
+    .expiry{margin-top:12px;font-size:12px;color:var(--sub)}
+
+    ol.frags{list-style:none;margin:18px 0 0;padding:0;display:flex;flex-direction:column;gap:10px}
+    .frag{display:flex;gap:12px;align-items:flex-start;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:12px 14px}
+    .play{flex:none;width:40px;height:40px;border-radius:50%;border:0;background:var(--brand);color:#fff;
+      display:flex;align-items:center;justify-content:center;cursor:pointer}
+    .play:hover{background:var(--brand-d)}
+    .play:disabled{background:#CBD5E0;cursor:not-allowed}
+    .play.playing{background:var(--brand-d)}
+    .body{flex:1;min-width:0}
+    .time{display:inline-block;font-variant-numeric:tabular-nums;font-size:12px;font-weight:700;color:var(--brand-d);background:#E6FFFA;border-radius:4px;padding:2px 8px}
+    .text{margin:7px 0 0;font-size:15px;color:#2D3748}
+    .text mark{border-radius:3px;padding:0.5px 3px;font-weight:700}
+    .noaudio{display:block;margin-top:6px;font-size:12px;color:var(--sub)}
+
+    .state{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:40px 28px;margin-top:14px;text-align:center}
+    .state h2{margin:0 0 6px;font-size:18px;color:var(--ink)}
+    .state p{margin:0;color:var(--sub);font-size:14px}
+    .spinner{width:26px;height:26px;border:3px solid var(--line);border-top-color:var(--brand);border-radius:50%;
+      margin:0 auto 14px;animation:spin .8s linear infinite}
+    @keyframes spin{to{transform:rotate(360deg)}}
+
+    footer{margin-top:26px;text-align:center;color:var(--sub);font-size:12px}
+
+    @media print{
+      body{background:#fff}
+      .play,.playall{display:none!important}
+      .frag,.head{box-shadow:none;break-inside:avoid}
+      .bar{background:#fff;color:var(--ink);border:1px solid var(--line)}
+      .bar .t2{color:var(--sub)}
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="bar">
+      <svg xmlns="http://www.w3.org/2000/svg" class="logo" viewBox="0 0 56.706 31.24" aria-label="Radio Mitre">
+        <path d="M15.5,85.117l2.291-10.94h4.376l1.493,6.564L27.676,74.1h4.4L29.735,85.091H26.208l.952-4.865-3.089,4.917H21.266l-.952-5.1-1.133,5.071Z" transform="translate(-15.5 -56.115)" fill="#fff"></path>
+        <path d="M79.781,85.588H76.1L78.211,74.7h3.681Z" transform="translate(-60.398 -56.562)" fill="#fff"></path>
+        <path d="M112.549,74.4H101.763l-.463,2.368h3.5l-1.725,8.6h3.758l1.75-8.6h3.5Z" transform="translate(-79.051 -56.339)" fill="#fff"></path>
+        <path d="M152.559,78.121a3.068,3.068,0,0,0-2.111-3.295l-8.237-.026L140.1,85.688h3.681l1.673-8.675h2.626a1.325,1.325,0,0,1,1.055,1.364c.129,1.21-1.236,1.725-1.236,1.725l-2.806-.026,3.5,7.8,3.861-.026-2.188-6.023A3.756,3.756,0,0,0,152.559,78.121Z" transform="translate(-107.783 -56.636)" fill="#fff"></path>
+        <path d="M199.6,76.991l.515-2.291h-9.807L188.2,85.588h9.988l.541-2.368h-6.744l.438-2.291h5.534l.412-2.265h-4.2l-1.544,1.313-.077.36.644-3.346Z" transform="translate(-143.412 -56.562)" fill="#fff"></path>
+        <path d="M50.2,21.692S58,12.657,76.25,5.115c0,0,.978-.618.618.515,0,0-3.166,4.633-4.556,6.126,0,0-.36.515.257.36a51.689,51.689,0,0,1,9.293-4.659s.515-.077.515.18c0,0-1.055,5.1-1.931,5.689a.258.258,0,0,0,.36.257,43.173,43.173,0,0,1,13.231-2.806l.257.18S78.515,15.514,77.1,17.625c0,0-1.133.077-.8-.618,0,0,1.055-4.479,1.673-4.994,0,0-9.91,6.307-11.583,5.972,0,0-.8.1-.257-.7a30.481,30.481,0,0,1,2.445-5.534s-15.084,7-17.53,9.653C51.075,21.435,50.921,21.949,50.2,21.692Z" transform="translate(-40.936 -4.947)" fill="#ea0a1f"></path>
+      </svg>
+      <div>
+        <div class="t1">Radio Mitre</div>
+        <div class="t2">Verificador de menciones al aire</div>
+      </div>
+    </div>
+
+    <div id="content">
+      <div class="state"><div class="spinner"></div><p>Cargando reporte…</p></div>
+    </div>
+
+    <footer id="footer"></footer>
+  </div>
+
+  <script src="/report.js"></script>
+</body>
+</html>

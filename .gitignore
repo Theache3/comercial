@@ -6,3 +6,9 @@ design_handoff/handoff.tar.gz
 
 # Editor / local
 *.log
+
+# Backend (Node)
+server/node_modules/
+server/.env
+# SQLite + audios completos + clips (datos en runtime, se borran a los 21 días)
+server/data/

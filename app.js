@@ -71,6 +71,8 @@
     gauge: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 13l3.5-3.5"/><path d="M4 19a8 8 0 1116 0"/></svg>`,
     download: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11M7.5 10.5L12 15l4.5-4.5M5 20h14"/></svg>`,
     send: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4 20-7z"/></svg>`,
+    link: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 007.07 0l3-3a5 5 0 00-7.07-7.07l-1.5 1.5"/><path d="M14 11a5 5 0 00-7.07 0l-3 3a5 5 0 007.07 7.07l1.5-1.5"/></svg>`,
+    copy: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 012-2h10"/></svg>`,
     karaoke: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h11M4 12h7M4 17h14"/></svg>`,
     spinner: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 3a9 9 0 109 9" opacity="0.9"/></svg>`,
   };
@@ -101,6 +103,8 @@
     rate: 1,                 // velocidad de reproducción
     wordKaraoke: true,       // resaltado palabra por palabra
     decodedBuffer: null,     // AudioBuffer decodificado (cache para "Enviar a la marca")
+    // persistencia (backend): sesión guardada 21 días desde la carga del audio
+    sessionId: null, sessionExpiresAt: null, sessionSaving: false, sessionError: false,
     // upload staging
     pendingAudioUrl: '', pendingAudioName: '', pendingSegments: null, pendingJsonName: '',
     uploadError: false, uploadErrorMsg: '',
@@ -109,6 +113,7 @@
   const RATES = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
   const WORD_MAX = 600;      // por encima, se desactiva el karaoke por palabra (performance)
   const MAX_DECODE_BYTES = 150 * 1024 * 1024; // archivos más grandes se exportan solo como texto
+  const API_BASE = '';       // same-origin: el backend Node sirve el front y la API
 
   // runtime refs (rebuilt on every renderApp)
   const refs = {};
@@ -120,7 +125,7 @@
   let styledWordEl = null;   // word span currently ringed (karaoke)
   let lastScrolled = -1;
   let scrubbing = false;
-  let raf = 0, lastTick = 0, flashTimer = 0;
+  let raf = 0, lastTick = 0, flashTimer = 0, brandsSaveTimer = 0;
   const root = document.getElementById('app');
 
   /* ============================================================
@@ -183,6 +188,7 @@
     root.appendChild(frame);
 
     if (state.view === 'main' && refs.scroll) refs.scroll.scrollTop = keepScroll;
+    if (state.view === 'upload') loadRecentSessions();
     paintAll();
   }
 
@@ -208,6 +214,9 @@
         h('span', { style: { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: '500', color: 'var(--gray-700)' } }, state.fileName),
       );
       right.appendChild(chip);
+      const save = h('div', { style: { fontSize: '12px', fontWeight: '600', whiteSpace: 'nowrap' } });
+      refs.saveStatus = save;
+      right.appendChild(save);
     }
     const newBtn = h('div', { class: 'tb-btn', onClick: goUpload, style: {
       display: 'inline-flex', alignItems: 'center', gap: '7px', padding: '8px 14px', border: '1px solid var(--gray-300)',
@@ -276,10 +285,18 @@
       ),
     );
 
+    const recentList = h('div', {});
+    const recentWrap = h('div', { style: { display: 'none', width: '560px', maxWidth: '100%', marginTop: '20px' } },
+      h('div', { style: { fontSize: '14px', fontWeight: '700', color: 'var(--gray-700)' } }, 'Audios recientes'),
+      h('div', { style: { fontSize: '12px', color: 'var(--gray-500)', margin: '3px 0 12px' } }, 'Se borran automáticamente a los 21 días de cargados.'),
+      recentList,
+    );
+    refs.recentWrap = recentWrap; refs.recent = recentList;
+
     return h('div', { style: {
       flex: '1', minHeight: '0', display: 'flex', alignItems: 'center', justifyContent: 'center',
       background: 'var(--gray-50)', padding: '40px', overflow: 'auto',
-    } }, card);
+    } }, h('div', { style: { display: 'flex', flexDirection: 'column', alignItems: 'center' } }, card, recentWrap));
   }
 
   /* ---------------- main view ---------------- */
@@ -438,13 +455,20 @@
     const card = h('div', { style: { background: '#fff', border: '1px solid var(--gray-200)', borderRadius: '8px', overflow: 'hidden', marginBottom: '12px', boxShadow: 'var(--shadow-xs)' } }, head);
 
     if (count > 0) {
+      const linkBtn = h('button', { class: 'link-btn', style: {
+        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px', width: '100%',
+        padding: '8px 10px', border: '0', borderRadius: '6px', background: 'var(--brand-500)',
+        color: '#fff', fontFamily: 'var(--font-sans)', fontSize: '13px', fontWeight: '600', cursor: 'pointer',
+      } }, svg(I.link), 'Generar link de reporte');
       const sendBtn = h('button', { class: 'send-btn', style: {
         display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px', width: '100%',
         padding: '8px 10px', border: '1px solid var(--brand-300)', borderRadius: '6px', background: 'var(--brand-50)',
         color: 'var(--brand-700)', fontFamily: 'var(--font-sans)', fontSize: '13px', fontWeight: '600', cursor: 'pointer',
-      } }, svg(I.send), 'Enviar a la marca');
+      } }, svg(I.send), 'Descargar HTML (offline)');
+      const result = h('div', { style: { display: 'none' } });
+      linkBtn.addEventListener('click', () => generateReport(b, bi, apps, linkBtn, result));
       sendBtn.addEventListener('click', () => exportBrand(b, bi, apps, sendBtn));
-      card.appendChild(h('div', { style: { padding: '8px 8px 0' } }, sendBtn));
+      card.appendChild(h('div', { style: { padding: '8px 8px 0', display: 'flex', flexDirection: 'column', gap: '6px' } }, linkBtn, sendBtn, result));
 
       const body = h('div', { style: { padding: '6px' } });
       apps.forEach(ap => {
@@ -549,7 +573,7 @@
   function paintAll() {
     if (state.view !== 'main') return;
     const t = audio ? audio.currentTime : state.currentTime;
-    paintStatus(); paintProgress(t); paintActive(t, false);
+    paintStatus(); paintSaveStatus(); paintProgress(t); paintActive(t, false);
   }
 
   function paintStatus() {
@@ -755,11 +779,13 @@
     if (state.brands.some(b => b.term.toLowerCase() === term.toLowerCase())) { state.brandInput = ''; if (refs.brandInput) refs.brandInput.value = ''; return; }
     state.brands = state.brands.concat([makeBrand(term)]);
     state.brandInput = '';
+    scheduleBrandsSave();
     renderApp();
     if (refs.brandInput) refs.brandInput.focus();
   }
   function removeBrand(idx) {
     state.brands = state.brands.filter((_, i) => i !== idx);
+    scheduleBrandsSave();
     renderApp();
   }
 
@@ -810,9 +836,11 @@
       view: 'main', fileName: state.pendingAudioName, audioUrl: state.pendingAudioUrl, segments: segs,
       duration: segs[segs.length - 1].end, currentTime: 0, isPlaying: false,
       segmentStart: null, segmentEnd: null, flashSeg: -1, activeAppKey: null, decodedBuffer: null,
+      sessionId: null, sessionExpiresAt: null, sessionSaving: false, sessionError: false, _persisting: null,
       pendingAudioUrl: '', pendingAudioName: '', pendingSegments: null, pendingJsonName: '', uploadError: false,
     });
     renderApp();
+    persistSession();   // guarda la sesión en el backend (21 días) en background
   }
   function loadSample() {
     if (audio) { audio.pause(); audio.currentTime = 0; }
@@ -825,9 +853,149 @@
       brands: [makeBrand('Mercado Libre'), makeBrand('Quilmes')],
       duration: segs[segs.length - 1].end, currentTime: 0, isPlaying: false,
       segmentStart: null, segmentEnd: null, flashSeg: -1, activeAppKey: null, decodedBuffer: null,
+      sessionId: null, sessionExpiresAt: null, sessionSaving: false, sessionError: false, _persisting: null,
       pendingAudioUrl: '', pendingAudioName: '', pendingSegments: null, pendingJsonName: '', uploadError: false,
     });
     renderApp();
+  }
+
+  /* ============================================================
+     BACKEND — persistencia (sesiones 21 días) + reportes
+     El backend Node sirve esta misma app. Si no responde (p. ej. la app
+     abierta como archivo suelto), estas features se degradan sin romper el core.
+  ============================================================ */
+  function brandsPayload() { return state.brands.map(b => ({ term: b.term, color: b.color })); }
+
+  // Sube la sesión actual (audio + transcript + marcas) al backend. Idempotente.
+  function persistSession() {
+    if (state.sessionId) return Promise.resolve();
+    if (state._persisting) return state._persisting;
+    state.sessionSaving = true; state.sessionError = false; paintSaveStatus();
+    state._persisting = (async () => {
+      try {
+        const blob = await fetch(state.audioUrl).then(r => r.blob());
+        const fd = new FormData();
+        fd.append('audio', blob, state.fileName || 'audio');
+        fd.append('fileName', state.fileName || 'audio');
+        fd.append('transcript', JSON.stringify(state.segments));
+        fd.append('brands', JSON.stringify(brandsPayload()));
+        const res = await fetch(API_BASE + '/api/sessions', { method: 'POST', body: fd });
+        if (!res.ok) throw new Error('http ' + res.status);
+        const data = await res.json();
+        state.sessionId = data.id; state.sessionExpiresAt = data.expiresAt; state.sessionError = false;
+      } catch (e) {
+        state.sessionError = true;
+      } finally {
+        state.sessionSaving = false; state._persisting = null; paintSaveStatus();
+      }
+    })();
+    return state._persisting;
+  }
+
+  async function ensureSession() {
+    if (state.sessionId) return true;
+    await persistSession();
+    return !!state.sessionId;
+  }
+
+  // Guarda las marcas (debounced) si ya hay sesión.
+  function scheduleBrandsSave() {
+    if (!state.sessionId) return;
+    clearTimeout(brandsSaveTimer);
+    brandsSaveTimer = setTimeout(() => {
+      fetch(API_BASE + '/api/sessions/' + state.sessionId + '/brands', {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ brands: brandsPayload() }),
+      }).catch(() => {});
+    }, 800);
+  }
+
+  function paintSaveStatus() {
+    const el = refs.saveStatus; if (!el) return;
+    if (state.sessionSaving) { el.style.display = 'inline-flex'; el.textContent = 'Guardando…'; el.style.color = 'var(--gray-500)'; }
+    else if (state.sessionId) { el.style.display = 'inline-flex'; el.textContent = 'Guardado · vence ' + shortDate(state.sessionExpiresAt); el.style.color = 'var(--brand-600)'; }
+    else if (state.sessionError) { el.style.display = 'inline-flex'; el.textContent = 'Sin guardar (sin conexión)'; el.style.color = 'var(--red-600)'; }
+    else { el.style.display = 'none'; }
+  }
+
+  function shortDate(ms) { const d = new Date(ms); return pad2(d.getDate()) + '/' + pad2(d.getMonth() + 1); }
+  function shortDateLong(ms) {
+    const meses = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+    const d = new Date(ms); return d.getDate() + ' de ' + meses[d.getMonth()] + ' de ' + d.getFullYear();
+  }
+
+  let toastTimer = 0;
+  function toast(msg, isErr) {
+    let el = document.getElementById('mtoast');
+    if (!el) {
+      el = h('div', { id: 'mtoast', style: {
+        position: 'fixed', bottom: '104px', left: '50%', transform: 'translateX(-50%)', zIndex: '60',
+        padding: '10px 16px', borderRadius: '8px', fontSize: '13px', fontWeight: '600', color: '#fff',
+        boxShadow: 'var(--shadow-lg)', maxWidth: '90%', textAlign: 'center',
+      } });
+      document.body.appendChild(el);
+    }
+    el.style.background = isErr ? 'var(--red-600)' : 'var(--gray-800)';
+    el.textContent = msg; el.style.display = 'block';
+    clearTimeout(toastTimer); toastTimer = setTimeout(() => { el.style.display = 'none'; }, 3200);
+  }
+
+  // Lista de audios recientes (no vencidos) en la pantalla de carga.
+  async function loadRecentSessions() {
+    const wrap = refs.recentWrap, list = refs.recent;
+    if (!wrap || !list) return;
+    try {
+      const res = await fetch(API_BASE + '/api/sessions');
+      if (!res.ok) throw new Error('http');
+      const data = await res.json();
+      const sessions = (data && data.sessions) || [];
+      if (!sessions.length) { wrap.style.display = 'none'; return; }
+      list.innerHTML = '';
+      sessions.forEach(s => list.appendChild(renderRecentRow(s)));
+      wrap.style.display = 'block';
+    } catch (e) { wrap.style.display = 'none'; }
+  }
+
+  function renderRecentRow(s) {
+    return h('div', { class: 'recent-row', onClick: () => openSession(s.id), style: {
+      display: 'flex', alignItems: 'center', gap: '12px', padding: '11px 14px', background: '#fff',
+      border: '1px solid var(--gray-200)', borderRadius: '8px', cursor: 'pointer', marginBottom: '8px', transition: 'background .15s, border-color .15s',
+    } },
+      h('div', { style: { width: '34px', height: '34px', flex: 'none', borderRadius: '7px', background: 'var(--brand-50)', display: 'flex', alignItems: 'center', justifyContent: 'center' } }, svg(I.wave('var(--brand-600)'))),
+      h('div', { style: { flex: '1', minWidth: '0' } },
+        h('div', { style: { fontSize: '14px', fontWeight: '600', color: 'var(--gray-800)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, s.fileName),
+        h('div', { style: { fontSize: '12px', color: 'var(--gray-500)', marginTop: '2px' } },
+          s.segmentCount + ' segmentos · ' + s.brandCount + (s.brandCount === 1 ? ' marca' : ' marcas') + ' · vence ' + shortDate(s.expiresAt)),
+      ),
+      h('div', { style: { flex: 'none', fontSize: '12px', fontWeight: '600', color: 'var(--brand-600)' } }, 'Abrir →'),
+    );
+  }
+
+  // Reabre una sesión guardada (audio servido por el backend).
+  async function openSession(id) {
+    try {
+      const res = await fetch(API_BASE + '/api/sessions/' + id);
+      if (!res.ok) throw new Error('http');
+      const s = await res.json();
+      const segs = Array.isArray(s.segments) ? s.segments : [];
+      const brands = (s.brands || []).map(b => (b && b.color) ? { term: b.term, color: b.color } : makeBrand(typeof b === 'string' ? b : (b && b.term) || ''));
+      nextColor = brands.length;
+      const audioUrl = API_BASE + '/api/sessions/' + id + '/audio';
+      if (audio) { audio.pause(); audio.currentTime = 0; audio.src = audioUrl; }
+      segGate = null; styledActive = -1; lastScrolled = -1;
+      Object.assign(state, {
+        view: 'main', fileName: s.fileName, audioUrl, segments: segs,
+        duration: segs.length ? segs[segs.length - 1].end : 0, currentTime: 0, isPlaying: false,
+        segmentStart: null, segmentEnd: null, flashSeg: -1, activeAppKey: null, decodedBuffer: null,
+        brands, sessionId: s.id, sessionExpiresAt: s.expiresAt, sessionSaving: false, sessionError: false, _persisting: null,
+        pendingAudioUrl: '', pendingAudioName: '', pendingSegments: null, pendingJsonName: '', uploadError: false,
+      });
+      renderApp();
+    } catch (e) {
+      state.uploadError = true;
+      state.uploadErrorMsg = 'No se pudo abrir el audio guardado (puede haber vencido).';
+      renderApp();
+    }
   }
 
   /* ============================================================
@@ -1040,6 +1208,36 @@
     return _sharedCtx;
   }
 
+  // Recorta los clips de UNA marca en el browser (decode + clipToWav). Devuelve
+  // fragments con el WAV (ArrayBuffer) por segmento. Lo usan tanto el download
+  // HTML (base64) como el reporte hosteado (blob). Aislamiento estructural: solo
+  // se generan los segmentos de ESTA marca.
+  async function buildBrandClips(brand, apps) {
+    const bySeg = new Map();
+    apps.forEach(ap => { if (!bySeg.has(ap.si)) bySeg.set(ap.si, []); bySeg.get(ap.si).push(ap); });
+    const segIdxs = [...bySeg.keys()].sort((a, b) => a - b);
+
+    // decode una vez por audio y cachear (reusado entre marcas); archivos gigantes → solo texto
+    let buffer = state.decodedBuffer, decodeFailed = false;
+    if (!buffer && state.audioUrl) {
+      try {
+        const raw = await fetch(state.audioUrl).then(r => r.arrayBuffer());
+        if (raw.byteLength > MAX_DECODE_BYTES) decodeFailed = true;
+        else { buffer = await getAudioCtx().decodeAudioData(raw); state.decodedBuffer = buffer; }
+      } catch (e) { decodeFailed = true; }
+    }
+
+    const fragments = segIdxs.map(si => {
+      const seg = state.segments[si];
+      const ranges = bySeg.get(si).map(ap => ({ start: ap.start, end: ap.end })).sort((a, b) => a.start - b.start);
+      let wav = null;
+      if (buffer) { try { wav = clipToWav(buffer, seg.start, seg.end, 0.3, 16000) || null; } catch (e) {} }
+      return { t: fmt(seg.start), start: seg.start, end: seg.end, dur: Math.max(0, seg.end - seg.start), text: seg.text, ranges, wav };
+    });
+    const noAudio = decodeFailed || !fragments.some(f => f.wav);
+    return { fragments, noAudio };
+  }
+
   async function exportBrand(brand, bi, apps, btn) {
     if (btn && btn._busy) return;
     const setBtn = (html, busy) => { if (!btn) return; btn.innerHTML = html; btn.style.opacity = busy ? '0.7' : '1'; btn.style.cursor = busy ? 'default' : 'pointer'; btn._busy = !!busy; };
@@ -1048,36 +1246,18 @@
     if (btn) clearTimeout(btn._restoreT);
     setBtn('Generando…', true);
     try {
-      // group matches by segment → one fragment per unique segment (avoid duplicate clips)
-      const bySeg = new Map();
-      apps.forEach(ap => { if (!bySeg.has(ap.si)) bySeg.set(ap.si, []); bySeg.get(ap.si).push(ap); });
-      const segIdxs = [...bySeg.keys()].sort((a, b) => a - b);
-
-      // decode once per audio file and cache it (reused across brands); skip giant files → texto solo
-      let buffer = state.decodedBuffer, decodeFailed = false;
-      if (!buffer && state.audioUrl) {
-        try {
-          const raw = await fetch(state.audioUrl).then(r => r.arrayBuffer());
-          if (raw.byteLength > MAX_DECODE_BYTES) decodeFailed = true;
-          else { buffer = await getAudioCtx().decodeAudioData(raw); state.decodedBuffer = buffer; }
-        } catch (e) { decodeFailed = true; }
-      }
-
-      const fragments = segIdxs.map(si => {
-        const seg = state.segments[si];
-        const ranges = bySeg.get(si).map(ap => ({ start: ap.start, end: ap.end })).sort((a, b) => a.start - b.start);
-        let audioUri = null;
-        if (buffer) { try { const wav = clipToWav(buffer, seg.start, seg.end, 0.3, 16000); if (wav) audioUri = 'data:audio/wav;base64,' + abToBase64(wav); } catch (e) {} }
-        return { t: fmt(seg.start), dur: Math.max(0, seg.end - seg.start), text: seg.text, ranges, audioUri };
-      });
-
-      const approxMB = fragments.reduce((a, f) => a + (f.audioUri ? f.audioUri.length : 0), 0) / (1024 * 1024);
+      const { fragments, noAudio } = await buildBrandClips(brand, apps);
+      // para el HTML autocontenido, los clips se embeben como base64
+      const htmlFrags = fragments.map(f => ({
+        t: f.t, dur: f.dur, text: f.text, ranges: f.ranges,
+        audioUri: f.wav ? 'data:audio/wav;base64,' + abToBase64(f.wav) : null,
+      }));
+      const approxMB = htmlFrags.reduce((a, f) => a + (f.audioUri ? f.audioUri.length : 0), 0) / (1024 * 1024);
       if (approxMB > 20 && !window.confirm('El archivo de ' + brand.term + ' pesa ~' + approxMB.toFixed(1) + ' MB y puede ser difícil de enviar por email. ¿Descargar igual?')) {
         restore(); return;
       }
 
-      const noAudio = decodeFailed || !fragments.some(f => f.audioUri);
-      const html = buildShareHtml(brand, fragments, apps.length, noAudio);
+      const html = buildShareHtml(brand, htmlFrags, apps.length, noAudio);
       const fname = 'menciones_' + slugify(brand.term) + '_' + slugify(baseName(state.fileName)) + '_' + todayISO() + '.html';
       downloadBlob(html, fname, 'text/html;charset=utf-8');
       setBtn('✓ Archivo generado', false);
@@ -1086,6 +1266,67 @@
       restore();
       window.alert('No se pudo generar el archivo para ' + brand.term + '.' + (e && e.message ? '\n' + e.message : ''));
     }
+  }
+
+  // Genera el reporte hosteado de una marca: recorta clips en el browser, los
+  // sube al backend y muestra la URL pública (token, sin login, vence con la sesión).
+  async function generateReport(brand, bi, apps, btn, resultEl) {
+    if (btn && btn._busy) return;
+    const orig = btn ? (btn._origHtml || (btn._origHtml = btn.innerHTML)) : null;
+    const setBtn = (txt, busy) => { if (!btn) return; btn.textContent = txt; btn.style.opacity = busy ? '0.7' : '1'; btn.style.cursor = busy ? 'default' : 'pointer'; btn._busy = !!busy; };
+    const restore = () => { if (!btn) return; btn.innerHTML = orig; btn.style.opacity = '1'; btn.style.cursor = 'pointer'; btn._busy = false; };
+
+    setBtn('Guardando audio…', true);
+    const ok = await ensureSession();
+    if (!ok) { restore(); toast('No se pudo guardar la sesión en el servidor. Revisá la conexión.', true); return; }
+
+    setBtn('Generando…', true);
+    try {
+      const { fragments, noAudio } = await buildBrandClips(brand, apps);
+      const fd = new FormData();
+      fd.append('brandTerm', brand.term);
+      fd.append('brandColor', JSON.stringify(brand.color));
+      fd.append('programName', state.fileName);
+      fd.append('noAudio', noAudio ? '1' : '0');
+      const mentions = fragments.map((f, i) => ({
+        t: f.t, start: f.start, end: f.end, dur: f.dur, text: f.text, ranges: f.ranges, clip: f.wav ? i : null,
+      }));
+      fd.append('mentions', JSON.stringify(mentions));
+      fragments.forEach((f, i) => { if (f.wav) fd.append('clips', new Blob([f.wav], { type: 'audio/wav' }), 'clip-' + i + '.wav'); });
+
+      const res = await fetch(API_BASE + '/api/sessions/' + state.sessionId + '/reports', { method: 'POST', body: fd });
+      if (!res.ok) throw new Error('http ' + res.status);
+      const data = await res.json();
+      restore();
+      showReportLink(resultEl, data.url, data.expiresAt);
+    } catch (e) {
+      restore();
+      toast('No se pudo generar el reporte de ' + brand.term + '.', true);
+    }
+  }
+
+  function showReportLink(el, url, expiresAt) {
+    if (!el) return;
+    el.innerHTML = ''; el.style.display = 'block'; el.style.marginTop = '2px';
+    const input = h('input', { value: url, readOnly: true, onClick: (e) => e.target.select(), style: {
+      flex: '1', minWidth: '0', padding: '7px 9px', border: '1px solid var(--gray-300)', borderRadius: '6px',
+      fontFamily: 'var(--font-sans)', fontSize: '12px', color: 'var(--gray-700)', background: 'var(--gray-50)', outline: 'none',
+    } });
+    const copyBtn = h('button', { class: 'copy-btn', style: {
+      display: 'inline-flex', alignItems: 'center', gap: '5px', flex: 'none', padding: '7px 10px',
+      border: '1px solid var(--gray-300)', borderRadius: '6px', background: '#fff', cursor: 'pointer',
+      fontFamily: 'var(--font-sans)', fontSize: '12px', fontWeight: '600', color: 'var(--gray-700)',
+    } }, svg(I.copy), 'Copiar');
+    copyBtn.addEventListener('click', async () => {
+      try { await navigator.clipboard.writeText(url); } catch (_) { input.select(); try { document.execCommand('copy'); } catch (_2) {} }
+      copyBtn.lastChild.textContent = '¡Copiado!';
+      setTimeout(() => { copyBtn.lastChild.textContent = 'Copiar'; }, 1600);
+    });
+    const note = h('div', { style: { fontSize: '11px', color: 'var(--gray-500)', marginTop: '5px', lineHeight: '1.45' } },
+      'Link público (cualquiera con el link lo ve). Vence el ' + shortDateLong(expiresAt) + '. ',
+      h('a', { href: url, target: '_blank', rel: 'noopener', class: 'link-sample', style: { color: 'var(--brand-600)', fontWeight: '600', textDecoration: 'none' } }, 'Abrir'),
+    );
+    el.append(h('div', { style: { display: 'flex', gap: '6px' } }, input, copyBtn), note);
   }
 
   const RADIOMITRE_LOGO = '<svg xmlns="http://www.w3.org/2000/svg" class="logo" viewBox="0 0 56.706 31.24">'
