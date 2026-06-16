@@ -75,6 +75,7 @@
     trash: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/></svg>`,
     edit: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z"/></svg>`,
     library: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg>`,
+    clock: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>`,
     karaoke: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h11M4 12h7M4 17h14"/></svg>`,
     spinner: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 3a9 9 0 109 9" opacity="0.9"/></svg>`,
   };
@@ -109,6 +110,7 @@
     sessionId: null, sessionExpiresAt: null, sessionSaving: false, sessionError: false,
     // upload staging (varios audios → se concatenan y transcriben)
     pendingAudios: [], _userOrdered: false, uploadTitle: '',
+    startOffset: null,       // hora de inicio (seg desde medianoche) → horario real de cada segmento
     processingError: null, _pollT: 0,
     uploadError: false, uploadErrorMsg: '',
   };
@@ -413,9 +415,10 @@
     } },
       h('div', {},
         h('div', { style: { fontSize: '15px', fontWeight: '700', color: 'var(--gray-800)' } }, 'Transcripción'),
-        h('div', { style: { fontSize: '12px', color: 'var(--gray-500)', marginTop: '2px' } }, state.segments.length + ' segmentos · ' + fmt(dur)),
+        h('div', { style: { fontSize: '12px', color: 'var(--gray-500)', marginTop: '2px' } }, state.segments.length + ' segmentos · ' + fmt(dur) + (state.startOffset != null ? ' · inicio ' + fmtClock(state.startOffset).slice(0, 5) : '')),
       ),
       h('div', { style: { display: 'flex', alignItems: 'center', gap: '8px' } },
+        startTimeBtn(),
         karaokeToggle(),
         h('div', { class: 'jump-btn', onClick: jumpToCurrent, style: {
           display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '6px 11px', border: '1px solid var(--gray-200)',
@@ -450,7 +453,7 @@
         boxShadow: 'none', transition: 'background .2s, box-shadow .2s', contentVisibility: 'auto', containIntrinsicSize: 'auto 52px',
       } },
         fill,
-        h('div', { style: { position: 'relative', zIndex: '1', flex: 'none', width: '46px', fontVariantNumeric: 'tabular-nums', fontSize: '12px', color: 'var(--gray-400)', fontWeight: '600', paddingTop: '2px', letterSpacing: '0.01em' } }, fmt(seg.start)),
+        h('div', { style: { position: 'relative', zIndex: '1', flex: 'none', width: state.startOffset != null ? '64px' : '46px', fontVariantNumeric: 'tabular-nums', fontSize: '12px', color: 'var(--gray-400)', fontWeight: '600', paddingTop: '2px', letterSpacing: '0.01em' } }, clockOf(seg.start) || fmt(seg.start)),
         text,
       );
       row.setAttribute('data-seg-index', i);
@@ -566,7 +569,7 @@
         const key = ap.si + '-' + bi + '-' + ap.start;
         const isAct = state.activeAppKey === key;
         const pill = h('span', { style: { display: 'inline-flex', alignItems: 'center', gap: '5px', flex: 'none', fontVariantNumeric: 'tabular-nums', fontSize: '12px', fontWeight: '700', color: c.fg, background: c.bg, borderRadius: '4px', padding: '3px 7px' } },
-          svg(I.triangle), fmt(seg.start));
+          svg(I.triangle), clockOf(seg.start) || fmt(seg.start));
         const snippet = h('span', { style: { fontSize: '13px', color: 'var(--gray-600)', lineHeight: '1.45', overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: '2', WebkitBoxOrient: 'vertical' } });
         buildSnippet(seg.text, ap.start, ap.end, c).forEach(p => snippet.appendChild(p));
         const btn = h('button', { class: 'appear-btn', onClick: () => playSegment(ap.si, key), style: {
@@ -642,6 +645,15 @@
     if (refs.rateLabel) refs.rateLabel.textContent = fmtRate(r);
   }
 
+  function startTimeBtn() {
+    const set = state.startOffset != null;
+    return h('div', { class: 'jump-btn', onClick: setStartTime, title: 'Hora de inicio del audio — calcula el horario real de cada mención', style: {
+      display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '6px 11px', borderRadius: '6px',
+      fontSize: '12px', fontWeight: '600', cursor: 'pointer',
+      border: '1px solid ' + (set ? 'var(--brand-400)' : 'var(--gray-200)'),
+      background: set ? 'var(--brand-50)' : '#fff', color: set ? 'var(--brand-700)' : 'var(--gray-600)',
+    } }, svg(I.clock), set ? ('Inicio ' + fmtClock(state.startOffset).slice(0, 5)) : 'Hora de inicio');
+  }
   function karaokeToggle() {
     const on = state.wordKaraoke;
     const disabled = state.segments.length > WORD_MAX;
@@ -968,7 +980,7 @@
       duration: segs[segs.length - 1].end, currentTime: 0, isPlaying: false,
       segmentStart: null, segmentEnd: null, flashSeg: -1, activeAppKey: null, decodedBuffer: null,
       sessionId: null, sessionExpiresAt: null, sessionSaving: false, sessionError: false, _persisting: null,
-      pendingAudios: [], _userOrdered: false, uploadTitle: '', processingError: null, uploadError: false,
+      pendingAudios: [], _userOrdered: false, uploadTitle: '', startOffset: null, processingError: null, uploadError: false,
     });
     renderApp();
   }
@@ -1036,6 +1048,25 @@
   function shortDateLong(ms) {
     const meses = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
     const d = new Date(ms); return d.getDate() + ' de ' + meses[d.getMonth()] + ' de ' + d.getFullYear();
+  }
+
+  // hora de inicio → horario real de cada segmento/mención
+  function fmtClock(sec) { sec = ((Math.floor(sec) % 86400) + 86400) % 86400; const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = sec % 60; return pad2(h) + ':' + pad2(m) + ':' + pad2(s); }
+  function parseClock(str) { const m = /^\s*(\d{1,2}):(\d{2})(?::(\d{2}))?\s*$/.exec(str || ''); if (!m) return null; const h = +m[1], mi = +m[2], s = +(m[3] || 0); if (h > 23 || mi > 59 || s > 59) return null; return h * 3600 + mi * 60 + s; }
+  function clockOf(segSec) { return state.startOffset == null ? null : fmtClock(state.startOffset + segSec); }
+  function setStartTime() {
+    const cur = state.startOffset == null ? '' : fmtClock(state.startOffset).slice(0, 5);
+    const v = window.prompt('Hora de inicio del audio (HH:MM o HH:MM:SS). Dejalo vacío para quitarla:', cur);
+    if (v == null) return;
+    let sec = null;
+    if (v.trim() !== '') { sec = parseClock(v); if (sec == null) { toast('Formato inválido. Usá HH:MM (ej: 09:00).', true); return; } }
+    state.startOffset = sec;
+    if (state.sessionId) {
+      fetch(API_BASE + '/api/sessions/' + state.sessionId + '/start', {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ startSeconds: sec }),
+      }).catch(() => {});
+    }
+    renderApp();
   }
 
   let toastTimer = 0;
@@ -1157,8 +1188,9 @@
         duration: s.duration || (segs.length ? segs[segs.length - 1].end : 0), currentTime: 0, isPlaying: false,
         segmentStart: null, segmentEnd: null, flashSeg: -1, activeAppKey: null, decodedBuffer: null,
         brands, sessionId: s.id, sessionExpiresAt: s.expiresAt, sessionSaving: false, sessionError: false, _persisting: null,
-        pendingAudios: [], _userOrdered: false, uploadTitle: '', processingError: null, uploadError: false,
+        pendingAudios: [], _userOrdered: false, uploadTitle: '', startOffset: null, processingError: null, uploadError: false,
       });
+      state.startOffset = (s.startOffset == null ? null : Number(s.startOffset));
       try { localStorage.setItem('vm_lastSession', s.id); } catch (_) {}
       renderApp();
     } catch (e) {
@@ -1188,7 +1220,7 @@
       duration: 0, currentTime: 0, isPlaying: false, segmentStart: null, segmentEnd: null,
       flashSeg: -1, activeAppKey: null, decodedBuffer: null,
       sessionId: null, sessionExpiresAt: null, sessionSaving: false, sessionError: false, _persisting: null,
-      pendingAudios: [], _userOrdered: false, uploadTitle: '', processingError: null, uploadError: false,
+      pendingAudios: [], _userOrdered: false, uploadTitle: '', startOffset: null, processingError: null, uploadError: false,
     });
     renderApp();
     toast('Audio descartado.');
@@ -1350,11 +1382,11 @@
   function csvCell(v) { const s = v == null ? '' : String(v); return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; }
   function exportCSV() {
     const mc = computeMatches();
-    const rows = [['Programa', 'Marca', 'Mención #', 'Inicio (mm:ss)', 'Fin (mm:ss)', 'Inicio (s)', 'Fin (s)', 'Duración (s)', 'Texto del segmento']];
+    const rows = [['Programa', 'Marca', 'Mención #', 'Hora real', 'Inicio (mm:ss)', 'Fin (mm:ss)', 'Inicio (s)', 'Fin (s)', 'Duración (s)', 'Texto del segmento']];
     state.brands.forEach((b, bi) => {
       mc.brandApp[bi].forEach((ap, idx) => {
         const seg = state.segments[ap.si];
-        rows.push([state.fileName, b.term, idx + 1, fmt(seg.start), fmt(seg.end), seg.start.toFixed(2), seg.end.toFixed(2), (seg.end - seg.start).toFixed(2), seg.text]);
+        rows.push([state.fileName, b.term, idx + 1, clockOf(seg.start) || '', fmt(seg.start), fmt(seg.end), seg.start.toFixed(2), seg.end.toFixed(2), (seg.end - seg.start).toFixed(2), seg.text]);
       });
     });
     const csv = rows.map(r => r.map(csvCell).join(',')).join('\r\n');
@@ -1443,7 +1475,7 @@
       const mentions = [...bySeg.keys()].sort((a, b) => a - b).map(si => {
         const seg = state.segments[si];
         const ranges = bySeg.get(si).map(ap => ({ start: ap.start, end: ap.end })).sort((a, b) => a.start - b.start);
-        return { t: fmt(seg.start), start: seg.start, end: seg.end, dur: Math.max(0, seg.end - seg.start), text: seg.text, ranges };
+        return { t: fmt(seg.start), clock: clockOf(seg.start), start: seg.start, end: seg.end, dur: Math.max(0, seg.end - seg.start), text: seg.text, ranges };
       });
       const res = await fetch(API_BASE + '/api/sessions/' + state.sessionId + '/reports', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },

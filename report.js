@@ -69,7 +69,7 @@
         + '<button class="play" data-i="' + i + '" ' + (playable ? '' : 'disabled') + ' aria-label="Reproducir mención">'
         + (playable ? PLAY : LOCK) + '</button>'
         + '<div class="body">'
-        + '<span class="time">' + esc(m.t || fmt(m.start)) + '</span>'
+        + '<span class="time">' + esc(m.clock || m.t || fmt(m.start)) + '</span>'
         + '<p class="text">' + frHtml(m.text, m.ranges, c) + '</p>'
         + (playable ? '<audio preload="none" src="' + esc(m.clipUrl) + '"></audio>'
           : '<span class="noaudio">Audio no disponible — verificar contra la emisión original.</span>')

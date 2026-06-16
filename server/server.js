@@ -94,7 +94,7 @@ app.get('/api/reports/:token', (req, res) => {
   let fragments = [];
   try { fragments = JSON.parse(r.mentions_json) || []; } catch (_) {}
   const mentions = fragments.map((m, i) => ({
-    t: m.t, start: m.start, end: m.end, dur: m.dur, text: m.text, ranges: m.ranges || [],
+    t: m.t, clock: m.clock || null, start: m.start, end: m.end, dur: m.dur, text: m.text, ranges: m.ranges || [],
     clipUrl: (m.clip != null) ? `/api/reports/${token}/clip/${m.clip}` : null,
   }));
   const mentionCount = fragments.reduce((a, m) => a + (Array.isArray(m.ranges) ? m.ranges.length : 1), 0);
@@ -251,6 +251,7 @@ app.get('/api/sessions/:id', (req, res) => {
     id: s.id, fileName: s.file_name, createdAt: s.created_at, expiresAt: s.expires_at,
     status: s.status || 'ready', errorMsg: s.error_msg || null, duration: s.duration || 0,
     sourceNames: safeJson(s.source_names_json, []),
+    startOffset: (s.start_offset == null ? null : s.start_offset),
     segments: safeJson(s.transcript_json, []), brands: safeJson(s.brands_json, []),
     hasAudio: !!s.audio_file,
   });
@@ -284,6 +285,17 @@ app.put('/api/sessions/:id/title', (req, res) => {
   if (!title) return res.status(400).json({ error: 'Título vacío.' });
   db.updateTitle(req.params.id, title);
   res.json({ ok: true, title });
+});
+
+// hora de inicio del audio (para calcular el horario real de cada segmento/mención)
+app.put('/api/sessions/:id/start', (req, res) => {
+  if (!idOk(req.params.id)) return res.status(404).json({ error: 'not_found' });
+  if (!db.getSession(req.params.id)) return res.status(404).json({ error: 'not_found' });
+  let sec = req.body && req.body.startSeconds;
+  if (sec === null || sec === '' || typeof sec === 'undefined') sec = null;
+  else { sec = Math.floor(Number(sec)); if (!isFinite(sec) || sec < 0 || sec > 86399) return res.status(400).json({ error: 'startSeconds inválido (0-86399 o null).' }); }
+  db.updateStartOffset(req.params.id, sec);
+  res.json({ ok: true, startOffset: sec });
 });
 
 /* ---------------- reports (links compartibles) ---------------- */
@@ -324,7 +336,7 @@ app.post('/api/sessions/:id/reports', requireSession, assignReportToken, async (
         } catch (e) { /* este fragmento queda sin audio */ }
       }
       fragments.push({
-        t: String(m.t || ''), start, end, dur: Math.max(0, end - start),
+        t: String(m.t || ''), clock: m.clock || null, start, end, dur: Math.max(0, end - start),
         text: String(m.text || ''), ranges: Array.isArray(m.ranges) ? m.ranges : [], clip,
       });
     }
