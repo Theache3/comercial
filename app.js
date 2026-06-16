@@ -119,6 +119,7 @@
   const WORD_MAX = 600;      // por encima, se desactiva el karaoke por palabra (performance)
   const MAX_DECODE_BYTES = 150 * 1024 * 1024; // archivos más grandes se exportan solo como texto
   const API_BASE = '';       // same-origin: el backend Node sirve el front y la API
+  const MENTION_MERGE_GAP = 5; // s: en el reporte, une menciones de segmentos contiguos (hueco <= esto)
 
   // runtime refs (rebuilt on every renderApp)
   const refs = {};
@@ -1455,6 +1456,30 @@
     return { fragments, noAudio };
   }
 
+  // Arma las menciones del reporte: un entry por segmento con la marca, uniendo los segmentos
+  // contiguos (hueco <= gapSec) en un solo fragmento + clip continuo (texto y resaltados combinados).
+  function buildMentions(apps, gapSec) {
+    const bySeg = new Map();
+    apps.forEach(ap => { if (!bySeg.has(ap.si)) bySeg.set(ap.si, []); bySeg.get(ap.si).push(ap); });
+    const segs = [...bySeg.keys()].sort((a, b) => a - b).map(si => {
+      const seg = state.segments[si];
+      return { start: seg.start, end: seg.end, text: seg.text, ranges: bySeg.get(si).map(ap => ({ start: ap.start, end: ap.end })).sort((a, b) => a.start - b.start) };
+    });
+    const groups = [];
+    for (const e of segs) {
+      const last = groups[groups.length - 1];
+      if (last && (e.start - last.end) <= gapSec) {
+        const offset = last.text.length + 1; // +1 por el espacio separador
+        last.text += ' ' + e.text;
+        e.ranges.forEach(r => last.ranges.push({ start: r.start + offset, end: r.end + offset }));
+        last.end = e.end;
+      } else {
+        groups.push({ start: e.start, end: e.end, text: e.text, ranges: e.ranges.slice() });
+      }
+    }
+    return groups.map(g => ({ t: fmt(g.start), clock: clockOf(g.start), start: g.start, end: g.end, dur: Math.max(0, g.end - g.start), text: g.text, ranges: g.ranges }));
+  }
+
   // Genera el reporte hosteado de una marca: recorta clips en el browser, los
   // sube al backend y muestra la URL pública (token, sin login, vence con la sesión).
   async function generateReport(brand, bi, apps, btn, resultEl) {
@@ -1469,14 +1494,8 @@
 
     setBtn('Generando…', true);
     try {
-      // un fragmento por segmento donde aparece la marca; el backend recorta los clips del audio.
-      const bySeg = new Map();
-      apps.forEach(ap => { if (!bySeg.has(ap.si)) bySeg.set(ap.si, []); bySeg.get(ap.si).push(ap); });
-      const mentions = [...bySeg.keys()].sort((a, b) => a - b).map(si => {
-        const seg = state.segments[si];
-        const ranges = bySeg.get(si).map(ap => ({ start: ap.start, end: ap.end })).sort((a, b) => a.start - b.start);
-        return { t: fmt(seg.start), clock: clockOf(seg.start), start: seg.start, end: seg.end, dur: Math.max(0, seg.end - seg.start), text: seg.text, ranges };
-      });
+      // menciones agrupadas: une los segmentos contiguos (hueco <= MENTION_MERGE_GAP s) en un clip.
+      const mentions = buildMentions(apps, MENTION_MERGE_GAP);
       const res = await fetch(API_BASE + '/api/sessions/' + state.sessionId + '/reports', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ brandTerm: brand.term, brandColor: brand.color, programName: state.fileName, mentions }),
