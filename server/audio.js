@@ -81,4 +81,13 @@ async function splitByTime(file, maxSec, outDir) {
   return out;
 }
 
-module.exports = { concat, probeDuration, splitByTime, FFMPEG, FFPROBE };
+// Recorta [start,end] (segundos) de `input` a un WAV mono 16k. -ss ANTES de -i = seek rápido,
+// no decodifica el archivo entero → sirve para audios largos (horas) sin cargar todo en memoria.
+async function clip(input, start, end, outPath) {
+  const dur = Math.max(0.05, end - start);
+  await run(FFMPEG, ['-y', '-ss', String(start), '-i', input, '-t', String(dur),
+    '-ac', '1', '-ar', '16000', '-c:a', 'pcm_s16le', outPath]);
+  return outPath;
+}
+
+module.exports = { concat, probeDuration, splitByTime, clip, FFMPEG, FFPROBE };

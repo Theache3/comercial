@@ -277,53 +277,61 @@ app.put('/api/sessions/:id/brands', (req, res) => {
 });
 
 /* ---------------- reports (links compartibles) ---------------- */
-const uploadReport = multer({
-  storage: multer.diskStorage({
-    destination: (req, _file, cb) => {
-      const dir = path.join(db.REPORTS_DIR, req.reportToken);
-      fs.mkdirSync(dir, { recursive: true });
-      cb(null, dir);
-    },
-    filename: (req, file, cb) => {
-      // el front manda clip-<i>.wav; validamos el nombre y si no, numeramos.
-      const ok = /^clip-\d{1,4}\.wav$/.test(file.originalname);
-      cb(null, ok ? file.originalname : `clip-${req._ci++}.wav`);
-    },
-  }),
-  limits: { fileSize: MAX_CLIP_BYTES, fieldSize: MAX_FIELD_BYTES, files: MAX_CLIPS, fields: 12 },
-});
 const requireSession = (req, res, next) => {
   if (!idOk(req.params.id)) return res.status(404).json({ error: 'Sesión no encontrada o vencida.' });
   const s = db.getSession(req.params.id);
   if (!s) return res.status(404).json({ error: 'Sesión no encontrada o vencida.' });
   req.session = s; next();
 };
-const assignReportToken = (req, _res, next) => { req.reportToken = newId(16); req._ci = 0; next(); };
+const assignReportToken = (req, _res, next) => { req.reportToken = newId(16); next(); };
 
-// generar el reporte de una marca (recibe los clips ya recortados en el browser)
-app.post('/api/sessions/:id/reports', requireSession, assignReportToken, uploadReport.array('clips', MAX_CLIPS), (req, res) => {
-  const partialDir = path.join(db.REPORTS_DIR, req.reportToken);
+// generar el reporte de una marca: el front manda las menciones (timestamps + texto); el backend
+// RECORTA los clips del audio de la sesión con ffmpeg (sirve para audios largos, sin decodificar en el browser).
+app.post('/api/sessions/:id/reports', requireSession, assignReportToken, async (req, res) => {
+  const token = req.reportToken;
+  const dir = path.join(db.REPORTS_DIR, token);
   try {
-    const fragments = safeJson(req.body.mentions, null);
-    if (!Array.isArray(fragments) || !fragments.length) { rmDir(partialDir); return res.status(400).json({ error: 'mentions inválido.' }); }
+    const s = req.session;
+    const mentions = Array.isArray(req.body && req.body.mentions) ? req.body.mentions : null;
+    if (!mentions || !mentions.length) return res.status(400).json({ error: 'mentions inválido.' });
     const brand_term = String(req.body.brandTerm || '').trim().slice(0, 200);
-    if (!brand_term) { rmDir(partialDir); return res.status(400).json({ error: 'Falta la marca.' }); }
+    if (!brand_term) return res.status(400).json({ error: 'Falta la marca.' });
+
+    fs.mkdirSync(dir, { recursive: true });
+    const audioPath = s.audio_file ? path.join(db.SESSIONS_DIR, s.id, s.audio_file) : null;
+    const hasAudio = !!(audioPath && fs.existsSync(audioPath));
+
+    const fragments = [];
+    let clipIndex = 0;
+    for (const m of mentions) {
+      const start = Math.max(0, Number(m.start) || 0);
+      const end = Number(m.end) || 0;
+      let clip = null;
+      if (hasAudio && end > start) {
+        try {
+          await audioLib.clip(audioPath, Math.max(0, start - 0.3), end + 0.3, path.join(dir, 'clip-' + clipIndex + '.wav'));
+          clip = clipIndex; clipIndex++;
+        } catch (e) { /* este fragmento queda sin audio */ }
+      }
+      fragments.push({
+        t: String(m.t || ''), start, end, dur: Math.max(0, end - start),
+        text: String(m.text || ''), ranges: Array.isArray(m.ranges) ? m.ranges : [], clip,
+      });
+    }
+    const noAudio = !fragments.some(f => f.clip != null);
 
     const created_at = Date.now();
-    const expires_at = req.session.expires_at;   // hereda: 21 días desde la carga del audio
+    const expires_at = s.expires_at;   // hereda: 21 días desde la carga del audio
     db.createReport({
-      token: req.reportToken,
-      session_id: req.session.id,
-      brand_term,
-      brand_color_json: JSON.stringify(safeJson(req.body.brandColor, {})),
+      token, session_id: s.id, brand_term,
+      brand_color_json: JSON.stringify((req.body && req.body.brandColor) || {}),
       mentions_json: JSON.stringify(fragments),
-      program_name: String(req.body.programName || req.session.file_name || '').slice(0, 200),
-      no_audio: (req.body.noAudio === '1' || req.body.noAudio === 'true') ? 1 : 0,
-      created_at, expires_at,
+      program_name: String((req.body && req.body.programName) || s.file_name || '').slice(0, 200),
+      no_audio: noAudio ? 1 : 0, created_at, expires_at,
     });
-    res.json({ token: req.reportToken, url: `${baseUrl(req)}/r/${req.reportToken}`, createdAt: created_at, expiresAt: expires_at });
+    res.json({ token, url: `${baseUrl(req)}/r/${token}`, createdAt: created_at, expiresAt: expires_at });
   } catch (e) {
-    rmDir(partialDir);
+    rmDir(dir);
     res.status(500).json({ error: 'No se pudo generar el reporte.' });
   }
 });

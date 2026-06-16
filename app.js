@@ -1372,19 +1372,18 @@
 
     setBtn('Generando…', true);
     try {
-      const { fragments, noAudio } = await buildBrandClips(brand, apps);
-      const fd = new FormData();
-      fd.append('brandTerm', brand.term);
-      fd.append('brandColor', JSON.stringify(brand.color));
-      fd.append('programName', state.fileName);
-      fd.append('noAudio', noAudio ? '1' : '0');
-      const mentions = fragments.map((f, i) => ({
-        t: f.t, start: f.start, end: f.end, dur: f.dur, text: f.text, ranges: f.ranges, clip: f.wav ? i : null,
-      }));
-      fd.append('mentions', JSON.stringify(mentions));
-      fragments.forEach((f, i) => { if (f.wav) fd.append('clips', new Blob([f.wav], { type: 'audio/wav' }), 'clip-' + i + '.wav'); });
-
-      const res = await fetch(API_BASE + '/api/sessions/' + state.sessionId + '/reports', { method: 'POST', body: fd });
+      // un fragmento por segmento donde aparece la marca; el backend recorta los clips del audio.
+      const bySeg = new Map();
+      apps.forEach(ap => { if (!bySeg.has(ap.si)) bySeg.set(ap.si, []); bySeg.get(ap.si).push(ap); });
+      const mentions = [...bySeg.keys()].sort((a, b) => a - b).map(si => {
+        const seg = state.segments[si];
+        const ranges = bySeg.get(si).map(ap => ({ start: ap.start, end: ap.end })).sort((a, b) => a.start - b.start);
+        return { t: fmt(seg.start), start: seg.start, end: seg.end, dur: Math.max(0, seg.end - seg.start), text: seg.text, ranges };
+      });
+      const res = await fetch(API_BASE + '/api/sessions/' + state.sessionId + '/reports', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ brandTerm: brand.term, brandColor: brand.color, programName: state.fileName, mentions }),
+      });
       if (!res.ok) throw new Error('http ' + res.status);
       const data = await res.json();
       restore();

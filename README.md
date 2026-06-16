@@ -85,10 +85,9 @@ cargado, el audio y todos sus reportes se borran solos (el reloj corre **desde l
   `server/transcribe.js` y `server/audio.js`. El reloj de 21 días corre desde la carga.
 - Maneja audios largos (cientos de segmentos) con `content-visibility` y updates dirigidos
   (sin re-render por frame), para que no se trabe.
-- **Recorte de audio** (para los reportes, en `buildBrandClips`): se decodifica el audio con
-  `AudioContext`, se recorta cada mención (con ~0,3 s de margen), se baja a mono 16 kHz y se reencoda
-  WAV; los clips se **suben al backend** (nunca el audio entero). El `writeWav` es compartido con el
-  generador del audio de ejemplo.
+- **Recorte de audio** (para los reportes): lo hace el **backend con ffmpeg** (`server/audio.js` →
+  `clip()`), cortando cada mención del audio de la sesión (con ~0,3 s de margen, mono 16 kHz). El
+  front solo manda los timestamps → funciona con programas largos (horas) sin decodificar en el browser.
 
 ## Estructura
 
