@@ -50,20 +50,20 @@ con los **textos y horarios** y un aviso de "audio no disponible".
   reportes** ya generados para sus marcas (esos links dejan de funcionar) y vuelve a la pantalla de
   carga. Pide confirmación; no se puede deshacer.
 
-## Cargar tu propio audio
+## Cargar audios (varios, transcripción automática)
 
-Botón **"Cargar nuevo audio"** → arrastrá/seleccioná:
+Botón **"Cargar nuevo audio"** → arrastrá/seleccioná **uno o más** audios (`mp3`, `wav`, `m4a`, …).
+Aparecen en una lista **ordenada alfabéticamente** por nombre; podés **reordenarlos arrastrando**
+(se unen en ese orden). Después, **"Transcribir y cargar"**:
 
-- **Audio**: `mp3`, `wav`, `m4a`.
-- **Transcripción (JSON)**: un array de segmentos con tiempos en **segundos** (estilo Whisper
-  `verbose_json`). También acepta `{ "segments": [...] }`.
+- El backend **concatena** los audios en un solo programa continuo y **los transcribe
+  automáticamente** (AssemblyAI; si falla, OpenAI Whisper — en español). Ya **no se sube JSON**.
+- Mientras transcribe ves una pantalla de progreso ("Transcribiendo el programa…"; puede tardar
+  unos minutos según la duración). Al terminar abre la vista de trabajo con la transcripción
+  continua, lista para verificar marcas. Si falla, te avisa con un botón para reintentar.
 
-```json
-[
-  { "start": 0.0,  "end": 3.4,  "text": "Buenos días, son las nueve y diez…" },
-  { "start": 3.4,  "end": 7.2,  "text": "Arrancamos con el repaso de la información…" }
-]
-```
+> Requiere una API key en el `.env` del backend (`ASSEMBLYAI_API_KEY` y/o `OPENAI_API_KEY`).
+> La transcripción tiene **costo por minuto** de audio.
 
 ## Persistencia (audios recientes)
 
@@ -74,16 +74,15 @@ cargado, el audio y todos sus reportes se borran solos (el reloj corre **desde l
 
 ## Notas técnicas
 
-- **Frontend client-side + backend liviano.** El audio se carga con `URL.createObjectURL` para
-  trabajar al instante; en paralelo, la sesión (audio + transcripción + marcas) se **guarda en el
-  backend** (Node + Express + SQLite) con **retención de 21 días desde la carga**. El recorte de
-  audio para los reportes se hace **en el browser**, así el backend queda liviano (~100 MB) y entra
-  co-hosteado en la instancia Lightsail existente. Ver `server/` y `deploy/INFRA.md`.
+- **Frontend client-side + backend.** El recorte de clips para los reportes se hace **en el browser**.
+  El backend (Node + Express + SQLite) guarda las sesiones con **retención de 21 días desde la carga**,
+  y al cargar audios los **concatena (ffmpeg) y transcribe** (AssemblyAI→Whisper) en un **job de a uno**
+  para no saturar la caja compartida. Ver `server/` y `deploy/INFRA.md`.
 - El audio del ejemplo es un **tono sintético** generado en el navegador y sincronizado a los
-  timestamps (placeholder audible). En uso real cargás tu `mp3`.
-- **Punto a reemplazar más adelante:** hoy la transcripción se carga como JSON. Ese es el lugar
-  donde más adelante se enganchará una **llamada real a una API de transcripción**
-  (ver `acceptJson` / `confirmUpload` en `app.js`).
+  timestamps (placeholder audible, no se transcribe ni se sube). En uso real cargás tus audios.
+- **Transcripción automática:** al cargar audios, el backend los concatena y transcribe con
+  AssemblyAI (primario) u OpenAI Whisper (fallback, con chunking para >25MB). Ver
+  `server/transcribe.js` y `server/audio.js`. El reloj de 21 días corre desde la carga.
 - Maneja audios largos (cientos de segmentos) con `content-visibility` y updates dirigidos
   (sin re-render por frame), para que no se trabe.
 - **Recorte de audio** (para los reportes, en `buildBrandClips`): se decodifica el audio con
@@ -99,7 +98,8 @@ app.js               — toda la app (estado, render, matching, player, persiste
 report.html/report.js— visor standalone del reporte de una marca (lo que abre el anunciante)
 colors_and_type.css  — tokens del Radio Mitre Design System (Chakra teal, Roboto, etc.)
 assets/radiomitre.svg— isologo
-server/              — backend Node + Express + SQLite (sesiones 21 días + reportes por token)
+server/              — backend Node + Express + SQLite. Concat (audio.js/ffmpeg) + transcripción
+                       (transcribe.js: AssemblyAI→Whisper). Sesiones 21 días + reportes por token.
 deploy/              — provisión co-host en videodownloader2 (systemd + Caddy) + INFRA.md
 design_handoff/      — bundle original de Claude Design (fuente del diseño; no es parte de la app)
 ```

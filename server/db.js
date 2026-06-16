@@ -53,19 +53,45 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_reports_session  ON reports(session_id);
 `);
 
+// migración idempotente: columnas para "varios audios + transcripción asíncrona".
+function ensureColumn(table, col, ddl) {
+  const has = db.prepare(`PRAGMA table_info(${table})`).all().some(c => c.name === col);
+  if (!has) db.exec(`ALTER TABLE ${table} ADD COLUMN ${ddl}`);
+}
+ensureColumn('sessions', 'status', "status TEXT NOT NULL DEFAULT 'ready'");
+ensureColumn('sessions', 'error_msg', 'error_msg TEXT');
+ensureColumn('sessions', 'duration', 'duration REAL');
+ensureColumn('sessions', 'source_names_json', 'source_names_json TEXT');
+
 /* ---------------- sessions ---------------- */
 const _insertSession = db.prepare(`
-  INSERT INTO sessions (id, file_name, audio_file, audio_mime, transcript_json, brands_json, created_at, expires_at)
-  VALUES (@id, @file_name, @audio_file, @audio_mime, @transcript_json, @brands_json, @created_at, @expires_at)
+  INSERT INTO sessions (id, file_name, audio_file, audio_mime, transcript_json, brands_json, created_at, expires_at, status, error_msg, duration, source_names_json)
+  VALUES (@id, @file_name, @audio_file, @audio_mime, @transcript_json, @brands_json, @created_at, @expires_at, @status, @error_msg, @duration, @source_names_json)
 `);
 const _getSession = db.prepare(`SELECT * FROM sessions WHERE id = ?`);
 const _listSessions = db.prepare(`
-  SELECT id, file_name, transcript_json, brands_json, created_at, expires_at
+  SELECT id, file_name, transcript_json, brands_json, created_at, expires_at, status
   FROM sessions WHERE expires_at > ? ORDER BY created_at DESC LIMIT 200
 `);
 const _updateBrands = db.prepare(`UPDATE sessions SET brands_json = ? WHERE id = ?`);
+const _updateStatus = db.prepare(`UPDATE sessions SET status = @status, error_msg = @error_msg WHERE id = @id`);
+const _setResult = db.prepare(`UPDATE sessions SET status = 'ready', error_msg = NULL, audio_file = @audio_file, audio_mime = @audio_mime, transcript_json = @transcript_json, duration = @duration WHERE id = @id`);
+const _failStale = db.prepare(`UPDATE sessions SET status = 'error', error_msg = 'Interrumpido por reinicio del servidor' WHERE status = 'processing'`);
 
-function createSession(row) { _insertSession.run(row); return row; }
+function createSession(row) {
+  _insertSession.run({
+    id: row.id, file_name: row.file_name,
+    audio_file: row.audio_file ?? null, audio_mime: row.audio_mime ?? null,
+    transcript_json: row.transcript_json ?? '[]', brands_json: row.brands_json ?? '[]',
+    created_at: row.created_at, expires_at: row.expires_at,
+    status: row.status ?? 'ready', error_msg: row.error_msg ?? null,
+    duration: row.duration ?? null, source_names_json: row.source_names_json ?? null,
+  });
+  return row;
+}
+function updateSessionStatus(id, status, error_msg = null) { return _updateStatus.run({ id, status, error_msg }).changes > 0; }
+function setSessionResult(id, r) { return _setResult.run({ id, audio_file: r.audio_file, audio_mime: r.audio_mime, transcript_json: r.transcript_json, duration: r.duration ?? null }).changes > 0; }
+function failStaleProcessing() { return _failStale.run().changes; }
 function getSession(id, now = Date.now()) {
   const s = _getSession.get(id);
   if (!s || s.expires_at <= now) return null;
@@ -113,6 +139,7 @@ module.exports = {
   db,
   DATA_DIR, SESSIONS_DIR, REPORTS_DIR,
   createSession, getSession, listSessions, updateBrands,
+  updateSessionStatus, setSessionResult, failStaleProcessing,
   createReport, getReport,
   reportTokensForSession, deleteSession,
   expiredSessionIds, expiredReportTokens, deleteExpiredRows,

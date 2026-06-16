@@ -3,8 +3,8 @@
    - Sirve el frontend estático + la API + el visor de reportes.
    - Persistencia 21 días desde la carga del audio (sessions).
    - Reportes compartibles por token, standalone, públicos (reports).
-   - El recorte de audio se hace EN EL BROWSER; acá solo se guarda/sirve
-     (idle ~100 MB, sin ffmpeg server-side) → entra en la caja compartida.
+   - El recorte de clips se hace EN EL BROWSER. La concatenación de varios audios
+     y la transcripción automática (AssemblyAI→Whisper) corren acá en un job de a uno.
 
    Auth: Basic Auth (en la app) sobre la herramienta interna.
          Público: /health, /r/:token, /report.js, /api/reports/*.
@@ -17,6 +17,8 @@ const crypto = require('crypto');
 const express = require('express');
 const multer = require('multer');
 const db = require('./db');
+const audioLib = require('./audio');
+const { transcribe } = require('./transcribe');
 const { cleanupExpired } = require('./cleanup');
 
 /* ---------------- .env mínimo (sin dependencias) ---------------- */
@@ -140,41 +142,92 @@ app.use(express.json({ limit: '4mb' }));   // para PUT brands (no afecta multipa
 const uploadSession = multer({
   storage: multer.diskStorage({
     destination: (req, _file, cb) => {
-      const dir = path.join(db.SESSIONS_DIR, req.sessionId);
+      const dir = path.join(db.SESSIONS_DIR, req.sessionId, 'raw');
       fs.mkdirSync(dir, { recursive: true });
       cb(null, dir);
     },
-    filename: (_req, file, cb) => cb(null, 'audio' + audioExt(file.originalname)),
+    // los archivos llegan en el orden en que el front los agregó al FormData
+    filename: (req, file, cb) => { req._n = (req._n || 0); cb(null, 'src-' + String(req._n++).padStart(3, '0') + audioExt(file.originalname)); },
   }),
-  limits: { fileSize: MAX_AUDIO_BYTES, fieldSize: MAX_FIELD_BYTES, files: 1, fields: 12 },
+  limits: { fileSize: MAX_AUDIO_BYTES, fieldSize: MAX_FIELD_BYTES, files: 50, fields: 12 },
 });
-const assignSessionId = (req, _res, next) => { req.sessionId = newId(12); next(); };
+const assignSessionId = (req, _res, next) => { req.sessionId = newId(12); req._n = 0; next(); };
 
-// crear sesión (subir audio + transcript + marcas)
-app.post('/api/sessions', assignSessionId, uploadSession.single('audio'), (req, res) => {
-  const partialDir = path.join(db.SESSIONS_DIR, req.sessionId);
+/* ---- job de a uno: concatena los audios (en orden) y los transcribe ---- */
+let _jobBusy = false; const _jobQ = [];
+function enqueueJob(fn) { _jobQ.push(fn); pumpJobs(); }
+async function pumpJobs() {
+  if (_jobBusy) return;
+  const fn = _jobQ.shift(); if (!fn) return;
+  _jobBusy = true;
+  try { await fn(); } catch (e) { console.error('[job] error', e); }
+  finally { _jobBusy = false; pumpJobs(); }
+}
+async function processSession(id, rawPaths) {
+  const dir = path.join(db.SESSIONS_DIR, id);
   try {
-    if (!req.file) return res.status(400).json({ error: 'Falta el archivo de audio.' });
-    const segs = safeJson(req.body.transcript, null);
-    if (!Array.isArray(segs) || !segs.length) { rmDir(partialDir); return res.status(400).json({ error: 'Transcript inválido (se espera un array de segmentos).' }); }
-    let brands = safeJson(req.body.brands, []);
-    if (!Array.isArray(brands)) brands = [];
+    const outPath = path.join(dir, 'audio.mp3');
+    const { duration } = await audioLib.concat(rawPaths, outPath);
+    const segments = await transcribe(outPath, { language: 'es' });
+    if (!segments.length) throw new Error('La transcripción no devolvió texto.');
+    db.setSessionResult(id, {
+      audio_file: 'audio.mp3', audio_mime: 'audio/mpeg',
+      transcript_json: JSON.stringify(segments),
+      duration: duration || segments[segments.length - 1].end || 0,
+    });
+    console.log(`[job] sesión ${id} lista (${segments.length} segmentos, ${Math.round(duration)}s).`);
+  } catch (e) {
+    db.updateSessionStatus(id, 'error', String((e && e.message) || e).slice(0, 500));
+    console.error(`[job] sesión ${id} error:`, (e && e.message) || e);
+  } finally {
+    rmDir(path.join(dir, 'raw'));
+  }
+}
 
+// crear sesión: subir VARIOS audios (en orden) → se concatenan y transcriben (async).
+// También acepta `transcript` directo (lo usa el audio de ejemplo: no transcribe).
+app.post('/api/sessions', assignSessionId, uploadSession.array('audios', 50), (req, res) => {
+  const dir = path.join(db.SESSIONS_DIR, req.sessionId);
+  try {
+    const files = req.files || [];
+    if (!files.length) { rmDir(dir); return res.status(400).json({ error: 'Subí al menos un audio.' }); }
+    const sourceNames = files.map(f => f.originalname);
+    const programName = String(req.body.fileName || sourceNames[0] || 'programa').slice(0, 200);
+    let brands = safeJson(req.body.brands, []); if (!Array.isArray(brands)) brands = [];
     const created_at = Date.now();
     const expires_at = created_at + RETENTION_MS;
+
+    // modo directo (audio de ejemplo): un audio + transcripción provista, sin transcribir.
+    const direct = safeJson(req.body.transcript, null);
+    if (Array.isArray(direct) && direct.length) {
+      const f = files[0];
+      const audioName = 'audio' + audioExt(f.originalname);
+      fs.renameSync(f.path, path.join(dir, audioName));
+      rmDir(path.join(dir, 'raw'));
+      db.createSession({
+        id: req.sessionId, file_name: programName,
+        audio_file: audioName, audio_mime: f.mimetype || 'audio/wav',
+        transcript_json: JSON.stringify(direct), brands_json: JSON.stringify(brands),
+        created_at, expires_at, status: 'ready',
+        source_names_json: JSON.stringify(sourceNames),
+        duration: direct[direct.length - 1].end || 0,
+      });
+      return res.json({ id: req.sessionId, status: 'ready', createdAt: created_at, expiresAt: expires_at });
+    }
+
+    // modo normal: crear 'processing' y encolar concat + transcripción.
+    const rawPaths = files.map(f => f.path);
     db.createSession({
-      id: req.sessionId,
-      file_name: String(req.body.fileName || req.file.originalname || 'audio').slice(0, 200),
-      audio_file: path.basename(req.file.path),
-      audio_mime: req.file.mimetype || 'application/octet-stream',
-      transcript_json: JSON.stringify(segs),
-      brands_json: JSON.stringify(brands),
-      created_at, expires_at,
+      id: req.sessionId, file_name: programName,
+      audio_file: null, audio_mime: null, transcript_json: '[]', brands_json: JSON.stringify(brands),
+      created_at, expires_at, status: 'processing',
+      source_names_json: JSON.stringify(sourceNames), duration: null,
     });
-    res.json({ id: req.sessionId, createdAt: created_at, expiresAt: expires_at });
+    res.json({ id: req.sessionId, status: 'processing', createdAt: created_at, expiresAt: expires_at });
+    enqueueJob(() => processSession(req.sessionId, rawPaths));
   } catch (e) {
-    rmDir(partialDir);
-    res.status(500).json({ error: 'No se pudo guardar la sesión.' });
+    rmDir(dir);
+    if (!res.headersSent) res.status(500).json({ error: 'No se pudo crear la sesión.' });
   }
 });
 
@@ -182,19 +235,22 @@ app.post('/api/sessions', assignSessionId, uploadSession.single('audio'), (req, 
 app.get('/api/sessions', (_req, res) => {
   const rows = db.listSessions().map((s) => ({
     id: s.id, fileName: s.file_name, createdAt: s.created_at, expiresAt: s.expires_at,
+    status: s.status || 'ready',
     segmentCount: safeJson(s.transcript_json, []).length,
     brandCount: safeJson(s.brands_json, []).length,
   }));
   res.json({ sessions: rows, retentionDays: RETENTION_DAYS });
 });
 
-// reabrir una sesión
+// reabrir una sesión (incluye estado de transcripción)
 app.get('/api/sessions/:id', (req, res) => {
   if (!idOk(req.params.id)) return res.status(404).json({ error: 'not_found' });
   const s = db.getSession(req.params.id);
   if (!s) return res.status(404).json({ error: 'not_found' });
   res.json({
     id: s.id, fileName: s.file_name, createdAt: s.created_at, expiresAt: s.expires_at,
+    status: s.status || 'ready', errorMsg: s.error_msg || null, duration: s.duration || 0,
+    sourceNames: safeJson(s.source_names_json, []),
     segments: safeJson(s.transcript_json, []), brands: safeJson(s.brands_json, []),
     hasAudio: !!s.audio_file,
   });
@@ -308,6 +364,7 @@ function sweep() {
     if (r.sessions || r.reports) console.log(`[cleanup] ${r.sessions} sesiones y ${r.reports} reportes vencidos borrados.`);
   } catch (e) { console.error('[cleanup] error', e); }
 }
+try { const n = db.failStaleProcessing(); if (n) console.log(`[boot] ${n} sesión(es) 'processing' interrumpidas → error.`); } catch (_) {}
 sweep();
 setInterval(sweep, 6 * 60 * 60 * 1000).unref();   // cada 6 h
 

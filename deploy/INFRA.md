@@ -69,6 +69,8 @@ APP_PASSWORD=<clave compartida del equipo comercial>
 PORT=8090
 RETENTION_DAYS=21              # el reloj corre desde la carga del audio
 PUBLIC_BASE_URL=https://comlog.cienradios.com   # para construir las URLs de reporte
+ASSEMBLYAI_API_KEY=<key>      # transcripción primaria (al cargar varios audios)
+OPENAI_API_KEY=<key>          # transcripción fallback (Whisper). Con una de las dos alcanza.
 ```
 
 > **Seguridad:** la herramienta interna (subir audio, ver transcripción) queda detrás de Basic
