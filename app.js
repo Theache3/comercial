@@ -174,11 +174,10 @@
     bootInitial();
   }
 
-  // Al abrir: restaura el último audio cargado (localStorage); si no hay o falla, carga el demo.
+  // Al abrir: pantalla de "Cargar nuevo audio" (con "Mis audios" debajo). No se
+  // restaura la última sesión automáticamente; se reabre desde la lista de audios.
   function bootInitial() {
-    let last = null;
-    try { last = localStorage.getItem('vm_lastSession'); } catch (_) {}
-    if (last) openSession(last); else loadSample();
+    goUpload();
   }
 
   /* ============================================================
