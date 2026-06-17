@@ -83,6 +83,7 @@
     clock: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>`,
     karaoke: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h11M4 12h7M4 17h14"/></svg>`,
     spinner: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 3a9 9 0 109 9" opacity="0.9"/></svg>`,
+    scissors: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M20 4L8.12 15.88M14.47 14.48L20 20M8.12 8.12L12 12"/></svg>`,
   };
 
   /* ---------------- state ---------------- */
@@ -116,6 +117,8 @@
     // upload staging (varios audios → se concatenan y transcriben)
     pendingAudios: [], _userOrdered: false, uploadTitle: '',
     startOffset: null,       // hora de inicio (seg desde medianoche) → horario real de cada segmento
+    // recortar audio: seleccionar un tramo de líneas en la transcripción y exportarlo
+    selMode: false, selA: null, selB: null, segKind: null,
     processingError: null, _pollT: 0,
     uploadError: false, uploadErrorMsg: '',
     // cargar desde el aire (logger HDX vía bridge)
@@ -566,6 +569,7 @@
       h('div', { style: { display: 'flex', alignItems: 'center', gap: '8px' } },
         startTimeBtn(),
         karaokeToggle(),
+        selectToggle(),
         h('button', { type: 'button', class: 'jump-btn', onClick: jumpToCurrent, style: {
           display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '6px 11px', border: '1px solid var(--gray-200)',
           borderRadius: '6px', fontSize: '12px', fontWeight: '600', color: 'var(--gray-600)', cursor: 'pointer',
@@ -580,7 +584,9 @@
     refs.segEls = [];
 
     const karaoke = state.wordKaraoke && state.segments.length <= WORD_MAX;
+    const sel = selRange();
     state.segments.forEach((seg, i) => {
+      const inSel = !!sel && i >= sel.a && i <= sel.b;
       const fill = h('div', { style: {
         position: 'absolute', left: '0', top: '0', bottom: '0', width: '0%', background: 'var(--brand-50)',
         transition: 'width .12s linear', pointerEvents: 'none', zIndex: '0',
@@ -592,10 +598,11 @@
       const tn = transcriptNodes(seg, mc.segHL[i], karaoke);
       tn.nodes.forEach(p => text.appendChild(p));
 
-      const row = h('div', { class: 'seg-row', onClick: () => playFrom(i), style: {
+      const row = h('div', { class: 'seg-row', onClick: () => state.selMode ? pickSel(i) : playFrom(i), style: {
         display: 'flex', gap: '14px', padding: '9px 12px', cursor: 'pointer', position: 'relative', overflow: 'hidden',
-        borderRadius: '6px', marginBottom: '1px', borderLeft: '3px solid transparent', background: 'transparent',
-        boxShadow: 'none', transition: 'background .2s, box-shadow .2s', contentVisibility: 'auto', containIntrinsicSize: 'auto 52px',
+        borderRadius: '6px', marginBottom: '1px', borderLeft: '3px solid transparent',
+        background: inSel ? 'var(--brand-50)' : 'transparent', boxShadow: inSel ? 'inset 3px 0 0 0 var(--brand-500)' : 'none',
+        transition: 'background .2s, box-shadow .2s', contentVisibility: 'auto', containIntrinsicSize: 'auto 52px',
       } },
         fill,
         h('div', { style: { position: 'relative', zIndex: '1', flex: 'none', width: state.startOffset != null ? '64px' : '46px', fontVariantNumeric: 'tabular-nums', fontSize: '12px', color: 'var(--gray-600)', fontWeight: '600', paddingTop: '2px', letterSpacing: '0.01em' } }, clockOf(seg.start) || fmt(seg.start)),
@@ -608,7 +615,134 @@
 
     return h('section', { 'aria-label': 'Transcripción', style: {
       flex: '1', minWidth: '0', display: 'flex', flexDirection: 'column', background: '#fff', borderRight: '1px solid var(--gray-200)',
-    } }, header, scroll);
+    } }, header, state.selMode ? buildSelBar() : null, scroll);
+  }
+
+  /* ---------------- recortar audio (selección de líneas → export MP3) ---------------- */
+  function selectToggle() {
+    const on = state.selMode;
+    return h('button', { type: 'button', class: 'jump-btn', onClick: toggleSelMode,
+      'aria-pressed': on ? 'true' : 'false',
+      title: 'Seleccionar un tramo de la transcripción y exportar ese audio', style: {
+        display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '6px 11px', borderRadius: '6px',
+        fontSize: '12px', fontWeight: '600', cursor: 'pointer',
+        border: '1px solid ' + (on ? 'var(--brand-400)' : 'var(--gray-200)'),
+        background: on ? 'var(--brand-50)' : '#fff', color: on ? 'var(--brand-700)' : 'var(--gray-600)',
+      } }, svg(I.scissors), 'Recortar audio');
+  }
+
+  // Rango seleccionado (índices de segmento, ordenados). complete = ya se eligió el final.
+  function selRange() {
+    if (state.selA == null) return null;
+    const b = state.selB == null ? state.selA : state.selB;
+    return { a: Math.min(state.selA, b), b: Math.max(state.selA, b), complete: state.selB != null };
+  }
+  // Rango en segundos + metadatos para reproducir/exportar.
+  function selBounds() {
+    const r = selRange(); if (!r) return null;
+    const segs = state.segments;
+    if (!segs[r.a] || !segs[r.b]) return null;
+    return { start: segs[r.a].start, end: segs[r.b].end, lines: r.b - r.a + 1, a: r.a, b: r.b };
+  }
+  function toggleSelMode() {
+    state.selMode = !state.selMode;
+    if (!state.selMode) { state.selA = null; state.selB = null; }
+    renderApp();
+  }
+  // Primer click = inicio del tramo; cada click siguiente mueve el final (se reordena solo).
+  function pickSel(i) {
+    if (state.selA == null) state.selA = i;
+    else state.selB = i;
+    renderApp();
+  }
+  function clearSel() { state.selA = null; state.selB = null; renderApp(); }
+
+  function fmtSpan(s) {
+    s = Math.max(0, Math.round(s));
+    const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), ss = s % 60;
+    if (h) return h + ' h ' + m + ' min';
+    if (m) return m + ' min ' + ss + ' s';
+    return ss + ' s';
+  }
+  // Tag de tiempo para el nombre de archivo (HHhMMmSSs, sin los ":" que rompen nombres).
+  function secTag(s) {
+    s = Math.max(0, Math.floor(s));
+    const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), ss = s % 60;
+    return (h ? pad2(h) + 'h' : '') + pad2(m) + 'm' + pad2(ss) + 's';
+  }
+
+  function selBtnStyle(primary) {
+    const base = { display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '6px 11px', borderRadius: '6px', fontSize: '12px', fontWeight: '600', cursor: 'pointer', flex: 'none' };
+    return primary
+      ? Object.assign(base, { border: '0', background: 'var(--btn-primary)', color: '#fff' })
+      : Object.assign(base, { border: '1px solid var(--gray-300)', background: '#fff', color: 'var(--gray-700)' });
+  }
+
+  function buildSelBar() {
+    const b = selBounds();
+    const left = h('div', { style: { display: 'flex', alignItems: 'center', gap: '8px', minWidth: '0', flex: '1', fontSize: '12.5px', color: 'var(--gray-700)', fontWeight: '600' } },
+      h('span', { style: { display: 'flex', flex: 'none', color: 'var(--brand-600)' } }, svg(I.scissors)));
+    let msg;
+    if (!b) msg = 'Tocá la línea donde empieza el tramo a recortar.';
+    else if (state.selB == null) msg = 'Inicio en ' + (clockOf(b.start) || fmt(b.start)) + ' · tocá la línea final del tramo.';
+    else msg = 'Tramo ' + (clockOf(b.start) || fmt(b.start)) + ' – ' + (clockOf(b.end) || fmt(b.end)) + ' · ' + b.lines + (b.lines === 1 ? ' línea' : ' líneas') + ' · ' + fmtSpan(b.end - b.start);
+    left.appendChild(h('span', { style: { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, msg));
+
+    const actions = h('div', { style: { display: 'flex', alignItems: 'center', gap: '7px', flex: 'none' } });
+    if (b) {
+      actions.appendChild(h('button', { type: 'button', class: 'jump-btn', onClick: playSelection, title: 'Reproducir el tramo seleccionado', style: selBtnStyle(false) }, svg(I.triangle), 'Escuchar'));
+      const dlBtn = h('button', { type: 'button', class: 'link-btn', title: 'Descargar el tramo seleccionado en MP3', style: selBtnStyle(true) }, svg(I.download), 'Descargar MP3');
+      dlBtn.addEventListener('click', () => downloadSelection(dlBtn));
+      actions.appendChild(dlBtn);
+      actions.appendChild(h('button', { type: 'button', class: 'jump-btn', onClick: clearSel, title: 'Limpiar la selección', style: selBtnStyle(false) }, 'Limpiar'));
+    }
+    actions.appendChild(h('button', { type: 'button', class: 'chip-x', onClick: toggleSelMode, title: 'Salir del modo recorte', 'aria-label': 'Salir del modo recorte', style: {
+      display: 'flex', alignItems: 'center', justifyContent: 'center', width: '24px', height: '24px', flex: 'none',
+      border: '1px solid var(--gray-300)', background: '#fff', borderRadius: '6px', color: 'var(--gray-600)', cursor: 'pointer', padding: '0',
+    } }, svg(I.xThin)));
+
+    return h('div', { style: {
+      flex: 'none', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px',
+      padding: '9px 18px', background: 'var(--brand-50)', borderBottom: '1px solid var(--brand-100)',
+    } }, left, actions);
+  }
+
+  // Reproduce el tramo seleccionado con auto-pausa al final (reusa el gate del player).
+  function playSelection() {
+    const b = selBounds(); if (!b || !audio) return;
+    segGate = b.end;
+    audio.currentTime = b.start;
+    state.segmentStart = b.start; state.segmentEnd = b.end; state.activeAppKey = null; state.segKind = 'seleccion'; state.currentTime = b.start;
+    styledActive = -1; lastScrolled = b.a;
+    clearActiveAppHighlight();
+    paintStatus(); paintProgress(b.start); paintActive(b.start, false);
+    hardScroll(b.a);
+    audio.play();
+  }
+
+  // Recorta el tramo en el backend (MP3 fiel) y lo baja. Necesita la sesión guardada (idempotente).
+  async function downloadSelection(btn) {
+    const b = selBounds(); if (!b) return;
+    if (!state.audioUrl) { toast('No hay audio para exportar.', true); return; }
+    const orig = btn ? btn.innerHTML : null;
+    const setBusy = (txt) => { if (!btn) return; btn.textContent = txt; btn.style.opacity = '0.7'; btn.style.pointerEvents = 'none'; };
+    const restore = () => { if (!btn) return; btn.innerHTML = orig; btn.style.opacity = '1'; btn.style.pointerEvents = 'auto'; };
+    setBusy('Guardando audio…');
+    const ok = await ensureSession();
+    if (!ok) { restore(); toast('No se pudo guardar el audio en el servidor para recortarlo.', true); return; }
+    setBusy('Recortando…');
+    const name = slugify(baseName(state.fileName)) + '_' + secTag(b.start) + '-' + secTag(b.end);
+    const url = API_BASE + '/api/sessions/' + state.sessionId + '/clip?start=' + b.start.toFixed(2) + '&end=' + b.end.toFixed(2) + '&name=' + encodeURIComponent(name);
+    try {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error('http ' + res.status);
+      downloadBlob(await res.blob(), name + '.mp3', 'audio/mpeg');
+      restore();
+      toast('Recorte descargado.');
+    } catch (e) {
+      restore();
+      toast('No se pudo recortar el audio.', true);
+    }
   }
 
   function buildBrands(mc) {
@@ -830,7 +964,7 @@
     refs.playBtn.setAttribute('aria-pressed', state.isPlaying ? 'true' : 'false');
     const hasSeg = state.segmentStart != null && state.segmentEnd != null;
     let label, color;
-    if (hasSeg) { label = 'Reproduciendo mención · ' + fmt(state.segmentStart) + ' – ' + fmt(state.segmentEnd); color = 'var(--brand-600)'; }
+    if (hasSeg) { label = 'Reproduciendo ' + (state.segKind === 'seleccion' ? 'selección' : 'mención') + ' · ' + fmt(state.segmentStart) + ' – ' + fmt(state.segmentEnd); color = 'var(--brand-600)'; }
     else if (state.isPlaying) { label = 'Reproduciendo'; color = 'var(--gray-700)'; }
     else { label = 'En pausa'; color = 'var(--gray-500)'; }
     refs.statusLabel.textContent = label;
@@ -949,7 +1083,7 @@
     const seg = state.segments[i]; if (!audio || !seg) return;
     segGate = seg.end;
     audio.currentTime = seg.start;
-    state.segmentStart = seg.start; state.segmentEnd = seg.end; state.flashSeg = i; state.activeAppKey = key; state.currentTime = seg.start;
+    state.segmentStart = seg.start; state.segmentEnd = seg.end; state.flashSeg = i; state.activeAppKey = key; state.segKind = 'mencion'; state.currentTime = seg.start;
     styledActive = -1; lastScrolled = i;
     setActiveAppHighlight(key);
     paintStatus(); paintProgress(seg.start); paintActive(seg.start, false);
@@ -1194,6 +1328,7 @@
       segmentStart: null, segmentEnd: null, flashSeg: -1, activeAppKey: null, decodedBuffer: null,
       sessionId: null, sessionExpiresAt: null, sessionSaving: false, sessionError: false, _persisting: null,
       pendingAudios: [], _userOrdered: false, uploadTitle: '', startOffset: null, processingError: null, uploadError: false,
+      selMode: false, selA: null, selB: null, segKind: null,
     });
     renderApp();
   }
@@ -1477,6 +1612,7 @@
         segmentStart: null, segmentEnd: null, flashSeg: -1, activeAppKey: null, decodedBuffer: null,
         brands, sessionId: s.id, sessionExpiresAt: s.expiresAt, sessionSaving: false, sessionError: false, _persisting: null,
         pendingAudios: [], _userOrdered: false, uploadTitle: '', startOffset: null, processingError: null, uploadError: false,
+      selMode: false, selA: null, selB: null, segKind: null,
       });
       state.startOffset = (s.startOffset == null ? null : Number(s.startOffset));
       try { localStorage.setItem('vm_lastSession', s.id); } catch (_) {}
@@ -1509,6 +1645,7 @@
       flashSeg: -1, activeAppKey: null, decodedBuffer: null,
       sessionId: null, sessionExpiresAt: null, sessionSaving: false, sessionError: false, _persisting: null,
       pendingAudios: [], _userOrdered: false, uploadTitle: '', startOffset: null, processingError: null, uploadError: false,
+      selMode: false, selA: null, selB: null, segKind: null,
     });
     renderApp();
     toast('Audio descartado.');

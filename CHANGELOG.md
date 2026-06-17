@@ -2,6 +2,11 @@
 
 ## En curso
 
+- **Recortar audio por selección:** botón **"Recortar audio"** arriba de la transcripción. Activás el
+  modo, tocás la **línea de inicio** y la **línea final** (el tramo entre medio se resalta), y podés
+  **Escuchar** ese tramo (con auto-pausa al final) o **Descargar MP3** fiel (estéreo, calidad original).
+  El recorte lo hace el **backend con ffmpeg** (`GET /api/sessions/:id/clip`, seek rápido → sirve para
+  programas largos); el archivo sale como `<programa>_<inicio>-<fin>.mp3`.
 - **Reporte:** cada mención con audio ahora tiene un **botón para descargar su clip** (.wav,
   nombre `<marca> <horario>.wav`). Usa el endpoint de clips existente; oculto en la impresión/PDF.
 

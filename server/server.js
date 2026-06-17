@@ -71,6 +71,12 @@ function audioExt(name) {
   const e = (path.extname(name || '') || '').toLowerCase();
   return AUDIO_EXTS.has(e) ? e : '.bin';
 }
+// Nombre seguro para Content-Disposition (sin acentos/espacios/path), acotado.
+function safeDownloadName(raw, fallback) {
+  const base = String(raw || '').replace(/\.[^.]+$/, '')
+    .replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80);
+  return base || fallback;
+}
 
 /* ---------------- app ---------------- */
 const app = express();
@@ -362,6 +368,31 @@ app.get('/api/sessions/:id/audio', (req, res) => {
   res.sendFile(path.join(db.SESSIONS_DIR, s.id, s.audio_file), (err) => {
     if (err && !res.headersSent) res.status(404).end();
   });
+});
+
+// recortar un tramo [start,end] (segundos) del audio de la sesión y bajarlo como MP3 fiel.
+// Lo usa "Recortar audio" de la transcripción (selección de líneas). Privado (detrás de la auth de la app),
+// igual que el audio completo. ffmpeg hace seek rápido → sirve también para programas largos.
+app.get('/api/sessions/:id/clip', async (req, res) => {
+  if (!idOk(req.params.id)) return res.status(404).end();
+  const s = db.getSession(req.params.id);
+  if (!s || !s.audio_file) return res.status(404).end();
+  const audioPath = path.join(db.SESSIONS_DIR, s.id, s.audio_file);
+  if (!fs.existsSync(audioPath)) return res.status(404).end();
+
+  const start = Math.max(0, Number(req.query.start));
+  const end = Number(req.query.end);
+  if (!isFinite(start) || !isFinite(end) || end <= start) return res.status(400).json({ error: 'Rango inválido.' });
+
+  const fname = safeDownloadName(req.query.name, 'recorte') + '.mp3';
+  const tmp = path.join(db.SESSIONS_DIR, s.id, 'export-' + newId(8) + '.mp3');
+  try {
+    await audioLib.clipExport(audioPath, start, end, tmp);
+    res.download(tmp, fname, (err) => { fs.unlink(tmp, () => {}); });
+  } catch (e) {
+    fs.unlink(tmp, () => {});
+    if (!res.headersSent) res.status(500).json({ error: 'No se pudo recortar el audio.' });
+  }
 });
 
 // guardar marcas (debounced desde el front)

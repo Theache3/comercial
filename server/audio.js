@@ -90,4 +90,15 @@ async function clip(input, start, end, outPath) {
   return outPath;
 }
 
-module.exports = { concat, probeDuration, splitByTime, clip, FFMPEG, FFPROBE };
+// Recorta [start,end] (segundos) a un MP3 "fiel": mantiene canales (estéreo) y sample rate del
+// original, re-encodando a VBR de alta calidad (-q:a 2 ≈ 190 kbps) para un corte limpio. Es el
+// export de "líneas marcadas" de la transcripción (lo que la persona guarda/manda). -ss ANTES de
+// -i = seek rápido → sirve igual para audios largos sin decodificar todo.
+async function clipExport(input, start, end, outPath) {
+  const dur = Math.max(0.05, end - start);
+  await run(FFMPEG, ['-y', '-ss', String(start), '-i', input, '-t', String(dur),
+    '-c:a', 'libmp3lame', '-q:a', '2', outPath]);
+  return outPath;
+}
+
+module.exports = { concat, probeDuration, splitByTime, clip, clipExport, FFMPEG, FFPROBE };

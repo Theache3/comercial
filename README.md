@@ -40,6 +40,10 @@ con los **textos y horarios** y un aviso de "audio no disponible".
 
 ## Otras acciones
 
+- **Recortar audio** (arriba de la transcripción): activás el modo, tocás la **línea de inicio** y la
+  **línea final**; el tramo entre medio se resalta. Después podés **Escuchar** ese tramo (se pausa solo
+  al terminar) o **Descargar MP3** (fiel: estéreo y calidad del original). El recorte lo hace el backend
+  con ffmpeg, así que funciona también con programas largos; el archivo sale como `<programa>_<inicio>-<fin>.mp3`.
 - **Exportar CSV** (arriba del panel de marcas): baja todas las menciones de todas las marcas a
   un CSV (programa, marca, horario mm:ss, inicio/fin en segundos, duración y texto), con BOM para
   que Excel respete los acentos.
