@@ -1,5 +1,10 @@
 # Changelog
 
+## En curso
+
+- **Reporte:** cada mención con audio ahora tiene un **botón para descargar su clip** (.wav,
+  nombre `<marca> <horario>.wav`). Usa el endpoint de clips existente; oculto en la impresión/PDF.
+
 ## En curso — Cargar desde el aire (logger HDX)
 
 - Nueva solapa **"Desde el aire"** en la pantalla de carga: elegís **radio** (Radio Mitre o La 100),

@@ -13,6 +13,7 @@
   const PLAY_SM = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
   const LOCK = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 018 0v3"/></svg>';
   const PDF = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M8 11l4 4 4-4M5 21h14"/></svg>';
+  const DL = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11M7.5 10.5 12 15l4.5-4.5M5 20h14"/></svg>';
 
   const content = document.getElementById('content');
   const footer = document.getElementById('footer');
@@ -29,6 +30,10 @@
   }
   function esc(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+  }
+  // nombre de archivo para la descarga del clip (sin caracteres inválidos)
+  function dlName(brand, label) {
+    return ((brand || 'audio') + ' ' + (label || '')).replace(/[\\/:*?"<>|]+/g, '-').replace(/\s+/g, ' ').trim() + '.wav';
   }
   // resalta los rangos de la marca dentro del texto del segmento
   function frHtml(text, ranges, c) {
@@ -66,15 +71,18 @@
 
     const fragsHtml = d.mentions.map((m, i) => {
       const playable = !!m.clipUrl;
+      const label = m.clock || m.t || fmt(m.start);
       return '<li class="frag">'
         + '<button class="play" data-i="' + i + '" ' + (playable ? '' : 'disabled') + ' aria-label="Reproducir mención">'
         + (playable ? PLAY : LOCK) + '</button>'
         + '<div class="body">'
-        + '<span class="time">' + esc(m.clock || m.t || fmt(m.start)) + '</span>'
+        + '<span class="time">' + esc(label) + '</span>'
         + '<p class="text">' + frHtml(m.text, m.ranges, c) + '</p>'
         + (playable ? '<audio preload="none" src="' + esc(m.clipUrl) + '"></audio>'
           : '<span class="noaudio">Audio no disponible — verificar contra la emisión original.</span>')
-        + '</div></li>';
+        + '</div>'
+        + (playable ? '<a class="dl" href="' + esc(m.clipUrl) + '" download="' + esc(dlName(d.brandTerm, label)) + '" title="Descargar audio" aria-label="Descargar audio">' + DL + '</a>' : '')
+        + '</li>';
     }).join('');
 
     content.innerHTML =
