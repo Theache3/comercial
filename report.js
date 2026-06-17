@@ -12,6 +12,7 @@
   const PAUSE = '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg>';
   const PLAY_SM = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
   const LOCK = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 018 0v3"/></svg>';
+  const PDF = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M8 11l4 4 4-4M5 21h14"/></svg>';
 
   const content = document.getElementById('content');
   const footer = document.getElementById('footer');
@@ -81,7 +82,10 @@
       + '<div class="brand"><span class="dot" style="background:' + esc(c.dot || c.line) + ';box-shadow:0 0 0 3px ' + esc(c.bg) + '"></span>' + esc(d.brandTerm) + '</div>'
       + '<div class="meta">' + esc(d.programName) + ' · generado el ' + dateLong(d.createdAt) + '</div>'
       + '<div class="chips"><span class="chip">' + esc(summary) + '</span><span class="chip">' + fmt(d.totalSec) + ' de audio</span></div>'
+      + '<div class="actions">'
       + (hasAudio ? '<button class="playall" id="playall">' + PLAY_SM + ' Reproducir todo</button>' : '')
+      + '<button class="pdfbtn" id="pdfbtn">' + PDF + ' Descargar PDF</button>'
+      + '</div>'
       + (d.noAudio ? '<div class="banner">No se pudo procesar el audio; este reporte incluye solo los textos y horarios de cada mención.</div>' : '')
       + '<div class="expiry">Este reporte estará disponible hasta el ' + dateLong(d.expiresAt) + '.</div>'
       + '</div>'
@@ -91,6 +95,8 @@
 
     document.title = 'Menciones de ' + d.brandTerm + ' · Radio Mitre';
     wirePlayback();
+    const pdf = document.getElementById('pdfbtn');
+    if (pdf) pdf.addEventListener('click', () => window.print());
   }
 
   // un solo audio sonando a la vez; "Reproducir todo" encadena.

@@ -27,9 +27,13 @@
     .meta{color:var(--sub);font-size:13px;margin-top:6px}
     .chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
     .chip{font-size:12px;font-weight:700;padding:4px 10px;border-radius:999px;background:#EDF2F7;color:var(--muted)}
-    .playall{margin-top:16px;display:inline-flex;align-items:center;gap:8px;background:var(--brand);color:#fff;border:0;
+    .actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px}
+    .playall{display:inline-flex;align-items:center;gap:8px;background:var(--brand);color:#fff;border:0;
       border-radius:6px;padding:9px 14px;font-family:inherit;font-size:14px;font-weight:600;cursor:pointer}
     .playall:hover{background:var(--brand-d)}
+    .pdfbtn{display:inline-flex;align-items:center;gap:8px;background:#fff;color:var(--ink);border:1px solid var(--line);
+      border-radius:6px;padding:9px 14px;font-family:inherit;font-size:14px;font-weight:600;cursor:pointer}
+    .pdfbtn:hover{background:var(--bg)}
     .banner{margin-top:14px;padding:10px 12px;background:#FFF5F5;border:1px solid #FEB2B2;border-radius:6px;color:#C53030;font-size:13px}
     .expiry{margin-top:12px;font-size:12px;color:var(--sub)}
 
@@ -57,7 +61,7 @@
 
     @media print{
       body{background:#fff}
-      .play,.playall{display:none!important}
+      .play,.actions{display:none!important}
       .frag,.head{box-shadow:none;break-inside:avoid}
       .bar{background:#fff;color:var(--ink);border:1px solid var(--line)}
       .bar .t2{color:var(--sub)}
