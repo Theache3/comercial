@@ -6,15 +6,13 @@
 ============================================================ */
 
 /* --- Web Fonts ------------------------------------------------
-   Codebase uses:
-     - Roboto  (Figma UI-Kit + marketing headings/body)
-     - Inter   (UI chrome, type specimens, admin)
-     - Montserrat (radiomitre-un-siglo centenary site,
-                   via next/font -> --font-montserrat)
-     - Georama (mobile-app-landing "Descargá Nuestra App")
-   All 4 are free on Google Fonts, no substitution needed.
+   El Verificador de menciones usa solo Roboto. La fuente se carga
+   con <link> en index.html (preconnect + css2, sin bloquear el
+   render como hacía el @import), en lugar del @import multi-familia
+   del design system, que bajaba Inter/Montserrat/Georama sin que
+   esta herramienta los use. Los tokens de familia quedan intactos
+   para otros consumidores del design system.
 ------------------------------------------------------------- */
-@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&family=Montserrat:wght@400;500;600;700;800;900&family=Georama:wght@400;500;600;700&display=swap');
 
 :root {
   /* -------------------------------------------------------
@@ -99,9 +97,13 @@
   /* -------------------------------------------------------
      STATUS (Chakra red/yellow/green, standard)
   -------------------------------------------------------- */
+  --red-50:     #FFF5F5;
+  --red-100:    #FED7D7;
+  --red-200:    #FEB2B2;
   --red-500:    #E53E3E;
   --red-600:    #C53030;
   --yellow-500: #D69E2E;
+  --green-50:   #F0FFF4;
   --green-500:  #38A169;
   --blue-500:   #3182CE;
 
@@ -130,7 +132,14 @@
   --color-accent-subtle: var(--brand-50);
   --color-accent-fg:     var(--brand-700);
 
+  /* Acción primaria con texto blanco: necesita >=4.5:1.
+     brand-500 da 3.5:1 (falla AA); brand-600 da 5.0:1 (pasa). */
+  --btn-primary:         var(--brand-600);
+  --btn-primary-hover:   var(--brand-700);
+
   --color-danger:        var(--red-500);
+  --color-danger-subtle: var(--red-50);
+  --color-danger-border: var(--red-200);
   --color-success:       var(--green-500);
   --color-warning:       var(--yellow-500);
   --color-info:          var(--blue-500);

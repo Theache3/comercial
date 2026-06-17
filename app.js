@@ -53,6 +53,11 @@
     wrap.innerHTML = str.trim();
     return wrap.firstElementChild;
   }
+  // Respeta la preferencia de "reducir movimiento" del sistema (scroll instantáneo).
+  function prefersReducedMotion() {
+    try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (_) { return false; }
+  }
+  function scrollBehavior() { return prefersReducedMotion() ? 'auto' : 'smooth'; }
 
   /* ---------------- icons ---------------- */
   const I = {
@@ -145,7 +150,7 @@
   function init() {
     if (ACCENT === 'mitre') for (const k in ACCENT_VARS) root.style.setProperty(k, `var(${ACCENT_VARS[k]})`);
 
-    audio = h('audio', { preload: 'auto', style: { display: 'none' } });
+    audio = h('audio', { preload: 'metadata', style: { display: 'none' } });
     audio.addEventListener('loadedmetadata', () => {
       audio.playbackRate = state.rate; // loading a new src resets playbackRate to 1
       if (isFinite(audio.duration) && audio.duration > 0) { state.duration = audio.duration; paintProgress(audio.currentTime); }
@@ -212,15 +217,15 @@
       h('img', { src: 'assets/radiomitre.svg', alt: 'Radio Mitre', style: { height: '26px', width: 'auto' } }),
       h('div', { style: { width: '1px', height: '28px', background: 'var(--gray-200)' } }),
       h('div', { style: { display: 'flex', flexDirection: 'column', lineHeight: '1.2' } },
-        h('span', { style: { fontSize: '15px', fontWeight: '700', color: 'var(--gray-800)', whiteSpace: 'nowrap' } }, 'Verificador de menciones'),
-        h('span', { style: { fontSize: '12px', color: 'var(--gray-500)' } }, 'Control de marcas al aire'),
+        h('h1', { style: { margin: '0', fontSize: '15px', fontWeight: '700', color: 'var(--gray-800)', whiteSpace: 'nowrap' } }, 'Verificador de menciones'),
+        h('span', { style: { fontSize: '12px', color: 'var(--gray-600)' } }, 'Control de marcas al aire'),
       ),
     );
 
-    const right = h('div', { style: { display: 'flex', alignItems: 'center', gap: '12px' } });
+    const right = h('nav', { 'aria-label': 'Acciones del audio', style: { display: 'flex', alignItems: 'center', gap: '12px' } });
     if (state.view === 'main') {
       const canRename = !!state.sessionId;
-      const chip = h('div', { onClick: canRename ? renameCurrent : null, title: canRename ? 'Renombrar este audio' : '', style: {
+      const chip = h(canRename ? 'button' : 'div', { type: canRename ? 'button' : null, onClick: canRename ? renameCurrent : null, title: canRename ? 'Renombrar este audio' : '', 'aria-label': canRename ? ('Renombrar audio: ' + state.fileName) : null, style: {
         display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 12px', background: 'var(--gray-50)',
         border: '1px solid var(--gray-200)', borderRadius: '999px', fontSize: '13px', color: 'var(--gray-600)', maxWidth: '360px',
         cursor: canRename ? 'pointer' : 'default',
@@ -235,24 +240,24 @@
       right.appendChild(save);
     }
     if (state.view === 'main') {
-      const discardBtn = h('div', { class: 'discard-btn', onClick: discardAudio, title: 'Descartar el audio cargado (lo borra del servidor)', style: {
+      const discardBtn = h('button', { type: 'button', class: 'discard-btn', onClick: discardAudio, title: 'Descartar el audio cargado (lo borra del servidor)', style: {
         display: 'inline-flex', alignItems: 'center', gap: '7px', padding: '8px 14px', border: '1px solid var(--gray-300)',
         borderRadius: '6px', fontSize: '13px', fontWeight: '600', color: 'var(--gray-700)', cursor: 'pointer', background: '#fff',
       } }, svg(I.trash), 'Descartar audio');
       right.appendChild(discardBtn);
     }
-    const libBtn = h('div', { class: 'tb-btn', onClick: goUpload, title: 'Ver tus audios / transcripciones', style: {
+    const libBtn = h('button', { type: 'button', class: 'tb-btn', onClick: goUpload, title: 'Ver tus audios / transcripciones', style: {
       display: 'inline-flex', alignItems: 'center', gap: '7px', padding: '8px 14px', border: '1px solid var(--gray-300)',
       borderRadius: '6px', fontSize: '13px', fontWeight: '600', color: 'var(--gray-700)', cursor: 'pointer', background: '#fff',
     } }, svg(I.library), 'Mis audios');
     right.appendChild(libBtn);
-    const newBtn = h('div', { class: 'tb-btn', onClick: goUpload, style: {
+    const newBtn = h('button', { type: 'button', class: 'tb-btn', onClick: goUpload, style: {
       display: 'inline-flex', alignItems: 'center', gap: '7px', padding: '8px 14px', border: '1px solid var(--gray-300)',
       borderRadius: '6px', fontSize: '13px', fontWeight: '600', color: 'var(--gray-700)', cursor: 'pointer', background: '#fff',
     } }, svg(I.upload), 'Cargar nuevo audio');
     right.appendChild(newBtn);
 
-    return h('div', { style: {
+    return h('header', { style: {
       height: '58px', flex: 'none', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
       padding: '0 20px', background: '#fff', borderBottom: '1px solid var(--gray-200)', zIndex: '5',
     } }, left, right);
@@ -260,17 +265,18 @@
 
   /* ---------------- upload view ---------------- */
   function dropzone(kind, ok, title, sub, onPick, onDrop) {
-    const zone = h('div', { class: 'dropzone', onClick: onPick,
+    const zone = h('button', { type: 'button', class: 'dropzone', onClick: onPick,
       onDragover: (e) => e.preventDefault(), onDrop: onDrop, style: {
         display: 'flex', alignItems: 'center', gap: '14px', padding: '16px', borderRadius: '8px', cursor: 'pointer',
+        width: '100%', textAlign: 'left',
         border: '1.5px dashed ' + (ok ? 'var(--green-500)' : 'var(--gray-300)'),
-        background: ok ? '#F0FFF4' : 'var(--gray-50)', transition: 'all .15s',
+        background: ok ? 'var(--green-50)' : 'var(--gray-50)', transition: 'all .15s',
       } },
       h('div', { style: { width: '40px', height: '40px', flex: 'none', borderRadius: '8px', background: 'var(--brand-50)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--brand-600)' } },
         svg(kind === 'audio' ? I.waveBig : I.json)),
       h('div', { style: { flex: '1', minWidth: '0' } },
         h('div', { style: { fontSize: '14px', fontWeight: '600', color: 'var(--gray-800)' } }, title),
-        h('div', { style: { fontSize: '13px', color: 'var(--gray-500)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, sub),
+        h('div', { style: { fontSize: '13px', color: 'var(--gray-600)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, sub),
       ),
       ok ? svg(I.check) : null,
     );
@@ -294,7 +300,7 @@
       h('span', { style: { flex: 'none', width: '20px', height: '20px', borderRadius: '50%', background: 'var(--brand-100)', color: 'var(--brand-700)', fontSize: '11px', fontWeight: '700', display: 'flex', alignItems: 'center', justifyContent: 'center' } }, String(i + 1)),
       h('div', { style: { flex: '1', minWidth: '0' } },
         h('div', { style: { fontSize: '13px', fontWeight: '600', color: 'var(--gray-800)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, f.name),
-        h('div', { style: { fontSize: '11px', color: 'var(--gray-500)' } }, fmtSize(f.size)),
+        h('div', { style: { fontSize: '11px', color: 'var(--gray-600)' } }, fmtSize(f.size)),
       ),
       h('button', { class: 'chip-x', onClick: (e) => { e.stopPropagation(); removeAudio(i); }, title: 'Quitar', style: {
         flex: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', width: '22px', height: '22px',
@@ -303,18 +309,28 @@
     );
   }
 
+  function switchUploadMode(id) {
+    if ((state.uploadMode || 'files') === id) return;
+    state.uploadMode = id; state.uploadError = false; state.loggerError = ''; state._tabFocus = true;
+    renderApp();
+    if (id === 'air') loadLoggerRadios();
+  }
   function uploadTab(id, label) {
     const active = (state.uploadMode || 'files') === id;
-    return h('div', { onClick: () => {
-      if ((state.uploadMode || 'files') === id) return;
-      state.uploadMode = id; state.uploadError = false; state.loggerError = '';
-      renderApp();
-      if (id === 'air') loadLoggerRadios();
-    }, style: {
-      flex: '1', textAlign: 'center', padding: '11px 12px', fontSize: '13.5px', fontWeight: '600', cursor: 'pointer',
-      color: active ? 'var(--brand-700)' : 'var(--gray-500)',
-      borderBottom: '2px solid ' + (active ? 'var(--brand-500)' : 'var(--gray-200)'),
-    } }, label);
+    const btn = h('button', { type: 'button', role: 'tab', id: 'tab-' + id,
+      'aria-selected': active ? 'true' : 'false', 'aria-controls': 'uploadpanel', tabindex: active ? '0' : '-1',
+      onClick: () => switchUploadMode(id),
+      onKeydown: (e) => {
+        if (['ArrowRight', 'ArrowLeft', 'Home', 'End'].indexOf(e.key) !== -1) { e.preventDefault(); switchUploadMode(id === 'files' ? 'air' : 'files'); }
+      },
+      style: {
+        flex: '1', textAlign: 'center', padding: '11px 12px', fontSize: '13.5px', fontWeight: '600', cursor: 'pointer',
+        background: 'transparent', border: '0',
+        color: active ? 'var(--brand-700)' : 'var(--gray-600)',
+        borderBottom: '2px solid ' + (active ? 'var(--brand-500)' : 'var(--gray-200)'),
+      } }, label);
+    refs.tabEls.push(btn);
+    return btn;
   }
 
   function buildFilesCardKids() {
@@ -329,13 +345,13 @@
           () => audioInput.click(), (e) => { e.preventDefault(); acceptAudios(e.dataTransfer.files); })),
     ];
     if (audios.length) {
-      const titleInput = h('input', { class: 'brand-input', value: state.uploadTitle, placeholder: 'Título (opcional, para reconocerlo después)', style: {
+      const titleInput = h('input', { class: 'brand-input', value: state.uploadTitle, placeholder: 'Título (opcional, para reconocerlo después)', 'aria-label': 'Título de la transcripción', style: {
         width: '100%', marginTop: '16px', padding: '9px 12px', border: '1px solid var(--gray-300)', borderRadius: '6px',
         fontFamily: 'var(--font-sans)', fontSize: '14px', color: 'var(--gray-800)', outline: 'none',
       } });
       titleInput.addEventListener('input', e => { state.uploadTitle = e.target.value; });
       kids.push(titleInput);
-      kids.push(h('div', { style: { fontSize: '12px', color: 'var(--gray-500)', margin: '16px 0 8px' } },
+      kids.push(h('div', { style: { fontSize: '12px', color: 'var(--gray-600)', margin: '16px 0 8px' } },
         audios.length + (audios.length === 1 ? ' audio' : ' audios') + ' · arrastrá para reordenar (se unen en este orden)'));
       const list = h('div', { style: { display: 'flex', flexDirection: 'column', gap: '6px' } });
       audios.forEach((f, i) => list.appendChild(buildAudioRow(f, i)));
@@ -343,18 +359,18 @@
     }
     kids.push(
       state.uploadError ? h('div', { style: {
-        marginTop: '14px', padding: '10px 12px', background: '#FFF5F5', border: '1px solid #FEB2B2',
+        marginTop: '14px', padding: '10px 12px', background: 'var(--red-50)', border: '1px solid var(--red-200)',
         borderRadius: '6px', fontSize: '13px', color: 'var(--red-600)',
       } }, state.uploadErrorMsg) : null,
       h('div', { style: {
         display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px',
         marginTop: '24px', paddingTop: '20px', borderTop: '1px solid var(--gray-100)',
       } },
-        h('div', { class: 'link-sample', onClick: loadSample, style: { fontSize: '13px', fontWeight: '600', color: 'var(--brand-600)', cursor: 'pointer' } }, 'Usar audio de ejemplo'),
-        h('div', { class: 'confirm-btn' + (ready ? ' ready' : ''), onClick: ready ? confirmUpload : null, style: {
+        h('button', { type: 'button', class: 'link-sample', onClick: loadSample, style: { background: 'transparent', border: '0', fontSize: '13px', fontWeight: '600', color: 'var(--brand-600)', cursor: 'pointer' } }, 'Usar audio de ejemplo'),
+        h('button', { type: 'button', class: 'confirm-btn' + (ready ? ' ready' : ''), disabled: !ready, onClick: ready ? confirmUpload : null, style: {
           display: 'inline-flex', alignItems: 'center', gap: '7px',
-          padding: '9px 18px', borderRadius: '6px', fontSize: '14px', fontWeight: '600',
-          background: ready ? 'var(--brand-500)' : 'var(--gray-200)', color: ready ? '#fff' : 'var(--gray-400)',
+          padding: '9px 18px', borderRadius: '6px', fontSize: '14px', fontWeight: '600', border: '0',
+          background: ready ? 'var(--btn-primary)' : 'var(--gray-200)', color: ready ? '#fff' : 'var(--gray-400)',
           cursor: ready ? 'pointer' : 'not-allowed',
         } }, svg(I.upload), 'Transcribir y cargar'),
       ),
@@ -363,8 +379,9 @@
   }
 
   function airField(label, input) {
-    return h('div', { style: { display: 'flex', flexDirection: 'column', gap: '5px', flex: '1', minWidth: '0' } },
-      h('label', { style: { fontSize: '12px', fontWeight: '600', color: 'var(--gray-600)' } }, label), input);
+    // <label> envuelve al input → asociación implícita (clic en el texto enfoca el control).
+    return h('label', { style: { display: 'flex', flexDirection: 'column', gap: '5px', flex: '1', minWidth: '0' } },
+      h('span', { style: { fontSize: '12px', fontWeight: '600', color: 'var(--gray-600)' } }, label), input);
   }
   const airInputStyle = {
     width: '100%', padding: '9px 11px', border: '1px solid var(--gray-300)', borderRadius: '6px',
@@ -375,7 +392,7 @@
   // foco/cursor → por eso los inputs de abajo NO llaman renderApp, sólo airTouch().
   function airSetSubmit(on) {
     const b = refs.airSubmit; if (!b) return;
-    b.style.background = on ? 'var(--brand-500)' : 'var(--gray-200)';
+    b.style.background = on ? 'var(--btn-primary)' : 'var(--gray-200)';
     b.style.color = on ? '#fff' : 'var(--gray-400)';
     b.style.cursor = on ? 'pointer' : 'not-allowed';
   }
@@ -407,7 +424,7 @@
     refs.airStatus = statusWrap;
     if (state.loggerError) {
       statusWrap.appendChild(h('div', { style: {
-        marginTop: '14px', padding: '10px 12px', background: '#FFF5F5', border: '1px solid #FEB2B2',
+        marginTop: '14px', padding: '10px 12px', background: 'var(--red-50)', border: '1px solid var(--red-200)',
         borderRadius: '6px', fontSize: '13px', color: 'var(--red-600)',
       } }, state.loggerError));
     } else if (prev && prev.count) {
@@ -425,12 +442,12 @@
       ));
     }
 
-    const submitBtn = h('div', { class: 'confirm-btn' + (canSubmit ? ' ready' : ''),
+    const submitBtn = h('button', { type: 'button', class: 'confirm-btn' + (canSubmit ? ' ready' : ''),
       onClick: () => { if (state.loggerPreview && state.loggerPreview.count && !state.loggerPreviewLoading) confirmFromLogger(); },
       style: {
         display: 'inline-flex', alignItems: 'center', gap: '7px', padding: '9px 18px', borderRadius: '6px',
-        fontSize: '14px', fontWeight: '600',
-        background: canSubmit ? 'var(--brand-500)' : 'var(--gray-200)', color: canSubmit ? '#fff' : 'var(--gray-400)',
+        fontSize: '14px', fontWeight: '600', border: '0',
+        background: canSubmit ? 'var(--btn-primary)' : 'var(--gray-200)', color: canSubmit ? '#fff' : 'var(--gray-400)',
         cursor: canSubmit ? 'pointer' : 'not-allowed',
       } }, svg(I.upload), 'Transcribir y cargar');
     refs.airSubmit = submitBtn;
@@ -446,7 +463,7 @@
         display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px',
         marginTop: '24px', paddingTop: '20px', borderTop: '1px solid var(--gray-100)',
       } },
-        h('div', { class: 'link-sample', onClick: loading ? null : loadLoggerPreview, style: {
+        h('button', { type: 'button', class: 'link-sample', onClick: loading ? null : loadLoggerPreview, style: {
           display: 'inline-flex', alignItems: 'center', gap: '7px', padding: '9px 16px', borderRadius: '6px',
           fontSize: '14px', fontWeight: '600', border: '1px solid var(--gray-300)', background: '#fff',
           color: 'var(--gray-700)', cursor: loading ? 'wait' : 'pointer',
@@ -458,11 +475,12 @@
 
   function buildUpload() {
     const mode = state.uploadMode || 'files';
-    const tabs = h('div', { style: { display: 'flex', margin: '-30px -30px 22px', borderBottom: '1px solid var(--gray-200)' } },
+    refs.tabEls = [];
+    const tabs = h('div', { role: 'tablist', 'aria-label': 'Origen del audio', style: { display: 'flex', margin: '-30px -30px 22px', borderBottom: '1px solid var(--gray-200)' } },
       uploadTab('files', 'Subir archivos'), uploadTab('air', 'Desde el aire'));
     const cardKids = [tabs, ...(mode === 'air' ? buildAirCardKids() : buildFilesCardKids())];
 
-    const card = h('div', { style: {
+    const card = h('div', { id: 'uploadpanel', role: 'tabpanel', 'aria-labelledby': 'tab-' + mode, style: {
       width: '560px', maxWidth: '100%', background: '#fff', border: '1px solid var(--gray-200)',
       borderRadius: '10px', boxShadow: 'var(--shadow-md)', padding: '30px',
     } }, ...cardKids);
@@ -470,10 +488,17 @@
     const recentList = h('div', {});
     const recentWrap = h('div', { style: { display: 'none', width: '560px', maxWidth: '100%', marginTop: '20px' } },
       h('div', { style: { fontSize: '14px', fontWeight: '700', color: 'var(--gray-700)' } }, 'Tus transcripciones'),
-      h('div', { style: { fontSize: '12px', color: 'var(--gray-500)', margin: '3px 0 12px' } }, 'Los audios que cargaste. Se borran automáticamente a los 21 días.'),
+      h('div', { style: { fontSize: '12px', color: 'var(--gray-600)', margin: '3px 0 12px' } }, 'Los audios que cargaste. Se borran automáticamente a los 21 días.'),
       recentList,
     );
     refs.recentWrap = recentWrap; refs.recent = recentList;
+
+    // Al cambiar de pestaña con teclado, devolver el foco a la pestaña activa
+    // (renderApp reconstruye el DOM y el foco se perdería).
+    if (state._tabFocus) {
+      state._tabFocus = false;
+      setTimeout(() => { const t = refs.tabEls.find(b => b.getAttribute('aria-selected') === 'true'); if (t) t.focus(); }, 0);
+    }
 
     return h('div', { style: {
       flex: '1', minHeight: '0', display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -499,15 +524,15 @@
       borderRadius: '10px', boxShadow: 'var(--shadow-md)', padding: '34px 30px', textAlign: 'center',
     } },
       err
-        ? h('div', { style: { width: '48px', height: '48px', margin: '0 auto 16px', borderRadius: '50%', background: '#FFF5F5', color: 'var(--red-600)', display: 'flex', alignItems: 'center', justifyContent: 'center' } }, svg(I.x(22)))
+        ? h('div', { style: { width: '48px', height: '48px', margin: '0 auto 16px', borderRadius: '50%', background: 'var(--red-50)', color: 'var(--red-600)', display: 'flex', alignItems: 'center', justifyContent: 'center' } }, svg(I.x(22)))
         : svg('<svg class="mspin" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--brand-500)" stroke-width="2.5" stroke-linecap="round" style="display:block;margin:0 auto 16px;"><path d="M12 3a9 9 0 1 0 9 9" opacity="0.9"/></svg>'),
       h('div', { style: { fontSize: '18px', fontWeight: '700', color: 'var(--gray-800)' } }, err ? 'No se pudo transcribir' : 'Transcribiendo el programa…'),
       h('div', { style: { fontSize: '14px', color: 'var(--gray-600)', marginTop: '8px', lineHeight: '1.5' } },
         err ? err : 'Estamos uniendo y transcribiendo los audios. Puede tardar unos minutos según la duración total. Podés dejar esta pestaña abierta.'),
       audios.length ? fileList : null,
       h('div', { style: { display: 'flex', justifyContent: 'center', gap: '10px', marginTop: '24px' } },
-        err ? h('div', { class: 'tb-btn', onClick: goUpload, style: { display: 'inline-flex', alignItems: 'center', padding: '9px 16px', border: '1px solid var(--gray-300)', borderRadius: '6px', fontSize: '14px', fontWeight: '600', color: 'var(--gray-700)', cursor: 'pointer', background: '#fff' } }, 'Volver') : null,
-        err ? h('div', { class: 'brand-add', onClick: (state.uploadMode === 'air' ? confirmFromLogger : confirmUpload), style: { display: 'inline-flex', alignItems: 'center', padding: '9px 16px', background: 'var(--brand-500)', color: '#fff', borderRadius: '6px', fontSize: '14px', fontWeight: '600', cursor: 'pointer' } }, 'Reintentar') : null,
+        err ? h('button', { type: 'button', class: 'tb-btn', onClick: goUpload, style: { display: 'inline-flex', alignItems: 'center', padding: '9px 16px', border: '1px solid var(--gray-300)', borderRadius: '6px', fontSize: '14px', fontWeight: '600', color: 'var(--gray-700)', cursor: 'pointer', background: '#fff' } }, 'Volver') : null,
+        err ? h('button', { type: 'button', class: 'brand-add', onClick: (state.uploadMode === 'air' ? confirmFromLogger : confirmUpload), style: { display: 'inline-flex', alignItems: 'center', padding: '9px 16px', background: 'var(--btn-primary)', color: '#fff', borderRadius: '6px', fontSize: '14px', fontWeight: '600', cursor: 'pointer', border: '0' } }, 'Reintentar') : null,
       ),
     );
 
@@ -520,27 +545,28 @@
   /* ---------------- main view ---------------- */
   function buildMain() {
     const wrap = h('div', { style: { flex: '1', minHeight: '0', display: 'flex', flexDirection: 'column' } });
-    const cols = h('div', { style: { flex: '1', minHeight: '0', display: 'flex' } },
-      buildTranscript(), buildBrands());
+    const mc = computeMatches(); // una sola vez por render; lo comparten transcript y marcas
+    const cols = h('main', { style: { flex: '1', minHeight: '0', display: 'flex' } },
+      buildTranscript(mc), buildBrands(mc));
     wrap.appendChild(cols);
     wrap.appendChild(buildPlayer());
     return wrap;
   }
 
-  function buildTranscript() {
+  function buildTranscript(mc) {
     const dur = state.duration || (state.segments.length ? state.segments[state.segments.length - 1].end : 0);
     const header = h('div', { style: {
       flex: 'none', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
       padding: '14px 22px', borderBottom: '1px solid var(--gray-100)',
     } },
       h('div', {},
-        h('div', { style: { fontSize: '15px', fontWeight: '700', color: 'var(--gray-800)' } }, 'Transcripción'),
-        h('div', { style: { fontSize: '12px', color: 'var(--gray-500)', marginTop: '2px' } }, state.segments.length + ' segmentos · ' + fmt(dur) + (state.startOffset != null ? ' · inicio ' + fmtClock(state.startOffset).slice(0, 5) : '')),
+        h('h2', { style: { margin: '0', fontSize: '15px', fontWeight: '700', color: 'var(--gray-800)' } }, 'Transcripción'),
+        h('div', { style: { fontSize: '12px', color: 'var(--gray-600)', marginTop: '2px' } }, state.segments.length + ' segmentos · ' + fmt(dur) + (state.startOffset != null ? ' · inicio ' + fmtClock(state.startOffset).slice(0, 5) : '')),
       ),
       h('div', { style: { display: 'flex', alignItems: 'center', gap: '8px' } },
         startTimeBtn(),
         karaokeToggle(),
-        h('div', { class: 'jump-btn', onClick: jumpToCurrent, style: {
+        h('button', { type: 'button', class: 'jump-btn', onClick: jumpToCurrent, style: {
           display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '6px 11px', border: '1px solid var(--gray-200)',
           borderRadius: '6px', fontSize: '12px', fontWeight: '600', color: 'var(--gray-600)', cursor: 'pointer',
         } }, svg(I.down), 'Ir a lo que suena'),
@@ -553,7 +579,6 @@
     refs.scroll = scroll;
     refs.segEls = [];
 
-    const mc = computeMatches();
     const karaoke = state.wordKaraoke && state.segments.length <= WORD_MAX;
     state.segments.forEach((seg, i) => {
       const fill = h('div', { style: {
@@ -573,7 +598,7 @@
         boxShadow: 'none', transition: 'background .2s, box-shadow .2s', contentVisibility: 'auto', containIntrinsicSize: 'auto 52px',
       } },
         fill,
-        h('div', { style: { position: 'relative', zIndex: '1', flex: 'none', width: state.startOffset != null ? '64px' : '46px', fontVariantNumeric: 'tabular-nums', fontSize: '12px', color: 'var(--gray-400)', fontWeight: '600', paddingTop: '2px', letterSpacing: '0.01em' } }, clockOf(seg.start) || fmt(seg.start)),
+        h('div', { style: { position: 'relative', zIndex: '1', flex: 'none', width: state.startOffset != null ? '64px' : '46px', fontVariantNumeric: 'tabular-nums', fontSize: '12px', color: 'var(--gray-600)', fontWeight: '600', paddingTop: '2px', letterSpacing: '0.01em' } }, clockOf(seg.start) || fmt(seg.start)),
         text,
       );
       row.setAttribute('data-seg-index', i);
@@ -581,16 +606,14 @@
       scroll.appendChild(row);
     });
 
-    return h('div', { style: {
+    return h('section', { 'aria-label': 'Transcripción', style: {
       flex: '1', minWidth: '0', display: 'flex', flexDirection: 'column', background: '#fff', borderRight: '1px solid var(--gray-200)',
     } }, header, scroll);
   }
 
-  function buildBrands() {
-    const mc = computeMatches();
-
+  function buildBrands(mc) {
     // input + chips header
-    const input = h('input', { class: 'brand-input', value: state.brandInput, placeholder: 'Ej: Mercado Libre', style: {
+    const input = h('input', { class: 'brand-input', value: state.brandInput, placeholder: 'Ej: Mercado Libre', 'aria-label': 'Marca a verificar', style: {
       flex: '1', minWidth: '0', padding: '9px 12px', border: '1px solid var(--gray-300)', borderRadius: '6px',
       fontFamily: 'var(--font-sans)', fontSize: '14px', color: 'var(--gray-800)', outline: 'none',
     } });
@@ -600,14 +623,14 @@
 
     const inputRow = h('div', { style: { display: 'flex', gap: '8px', marginTop: '12px' } },
       input,
-      h('div', { class: 'brand-add', onClick: () => addBrand(state.brandInput), style: {
+      h('button', { type: 'button', class: 'brand-add', onClick: () => addBrand(state.brandInput), style: {
         display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '5px', padding: '9px 14px',
-        background: 'var(--brand-500)', color: '#fff', borderRadius: '6px', fontSize: '14px', fontWeight: '600', cursor: 'pointer', flex: 'none',
+        background: 'var(--btn-primary)', color: '#fff', border: '0', borderRadius: '6px', fontSize: '14px', fontWeight: '600', cursor: 'pointer', flex: 'none',
       } }, 'Agregar'),
     );
 
     const totalMentions = mc.brandApp.reduce((a, arr) => a + arr.length, 0);
-    const csvBtn = h('div', { class: 'csv-btn' + (totalMentions ? '' : ' disabled'), onClick: totalMentions ? exportCSV : null,
+    const csvBtn = h('button', { type: 'button', class: 'csv-btn' + (totalMentions ? '' : ' disabled'), disabled: !totalMentions, onClick: totalMentions ? exportCSV : null,
       title: totalMentions ? 'Exportar todas las menciones a CSV' : 'No hay menciones para exportar', style: {
         display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '6px 11px', border: '1px solid var(--gray-200)',
         borderRadius: '6px', fontSize: '12px', fontWeight: '600', cursor: totalMentions ? 'pointer' : 'default',
@@ -617,8 +640,8 @@
     const headerKids = [
       h('div', { style: { display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '10px' } },
         h('div', { style: { minWidth: '0' } },
-          h('div', { style: { fontSize: '15px', fontWeight: '700', color: 'var(--gray-800)' } }, 'Marcas a verificar'),
-          h('div', { style: { fontSize: '12px', color: 'var(--gray-500)', marginTop: '2px' } }, 'Buscá una o más marcas para ver y escuchar dónde se nombran.'),
+          h('h2', { style: { margin: '0', fontSize: '15px', fontWeight: '700', color: 'var(--gray-800)' } }, 'Marcas a verificar'),
+          h('div', { style: { fontSize: '12px', color: 'var(--gray-600)', marginTop: '2px' } }, 'Buscá una o más marcas para ver y escuchar dónde se nombran.'),
         ),
         csvBtn,
       ),
@@ -633,9 +656,9 @@
         } },
           h('span', { style: { width: '9px', height: '9px', borderRadius: '50%', background: b.color.dot, flex: 'none' } }),
           b.term,
-          h('button', { class: 'chip-x', onClick: () => removeBrand(i), style: {
+          h('button', { type: 'button', class: 'chip-x', onClick: () => removeBrand(i), title: 'Quitar marca', 'aria-label': 'Quitar ' + b.term, style: {
             display: 'flex', alignItems: 'center', justifyContent: 'center', width: '17px', height: '17px', border: '0',
-            background: 'var(--gray-100)', borderRadius: '50%', color: 'var(--gray-500)', cursor: 'pointer', padding: '0',
+            background: 'var(--gray-100)', borderRadius: '50%', color: 'var(--gray-600)', cursor: 'pointer', padding: '0',
           } }, svg(I.x(9))),
         ));
       });
@@ -654,11 +677,11 @@
       } },
         h('div', { style: { width: '52px', height: '52px', borderRadius: '50%', background: '#fff', border: '1px solid var(--gray-200)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '14px' } }, svg(I.search)),
         h('div', { style: { fontSize: '14px', fontWeight: '600', color: 'var(--gray-600)' } }, 'Todavía no agregaste marcas'),
-        h('div', { style: { fontSize: '13px', color: 'var(--gray-500)', marginTop: '4px', maxWidth: '240px', lineHeight: '1.5' } }, 'Escribí una marca arriba para resaltarla en la transcripción y listar sus menciones.'),
+        h('div', { style: { fontSize: '13px', color: 'var(--gray-600)', marginTop: '4px', maxWidth: '240px', lineHeight: '1.5' } }, 'Escribí una marca arriba para resaltarla en la transcripción y listar sus menciones.'),
       ));
     }
 
-    return h('div', { style: { flex: 'none', width: 'clamp(460px, 40vw, 760px)', display: 'flex', flexDirection: 'column', background: 'var(--gray-50)' } }, header, list);
+    return h('section', { 'aria-label': 'Marcas a verificar', style: { flex: 'none', width: 'clamp(460px, 40vw, 760px)', display: 'flex', flexDirection: 'column', background: 'var(--gray-50)' } }, header, list);
   }
 
   function buildBrandCard(b, bi, apps) {
@@ -668,7 +691,7 @@
     const head = h('div', { style: { display: 'flex', alignItems: 'center', gap: '10px', padding: '12px 14px', borderBottom: '1px solid var(--gray-100)' } },
       h('span', { style: { width: '12px', height: '12px', borderRadius: '50%', background: c.dot, flex: 'none', boxShadow: '0 0 0 3px ' + c.bg } }),
       h('span', { style: { fontSize: '15px', fontWeight: '700', color: 'var(--gray-800)', flex: '1', minWidth: '0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, b.term),
-      h('span', { style: { flex: 'none', fontSize: '12px', fontWeight: '700', padding: '3px 9px', borderRadius: '999px', background: count ? c.bg : 'var(--gray-100)', color: count ? c.fg : 'var(--gray-500)' } }, countLabel),
+      h('span', { style: { flex: 'none', fontSize: '12px', fontWeight: '700', padding: '3px 9px', borderRadius: '999px', background: count ? c.bg : 'var(--gray-100)', color: count ? c.fg : 'var(--gray-600)' } }, countLabel),
     );
 
     const card = h('div', { style: { background: '#fff', border: '1px solid var(--gray-200)', borderRadius: '8px', overflow: 'hidden', marginBottom: '12px', boxShadow: 'var(--shadow-xs)' } }, head);
@@ -676,7 +699,7 @@
     if (count > 0) {
       const linkBtn = h('button', { class: 'link-btn', style: {
         display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px', width: '100%',
-        padding: '8px 10px', border: '0', borderRadius: '6px', background: 'var(--brand-500)',
+        padding: '8px 10px', border: '0', borderRadius: '6px', background: 'var(--btn-primary)',
         color: '#fff', fontFamily: 'var(--font-sans)', fontSize: '13px', fontWeight: '600', cursor: 'pointer',
       } }, svg(I.link), 'Generar link de reporte');
       const result = h('div', { style: { display: 'none' } });
@@ -702,20 +725,20 @@
       });
       card.appendChild(body);
     } else {
-      card.appendChild(h('div', { style: { padding: '14px', fontSize: '13px', color: 'var(--gray-500)' } }, 'Sin menciones en este audio.'));
+      card.appendChild(h('div', { style: { padding: '14px', fontSize: '13px', color: 'var(--gray-600)' } }, 'Sin menciones en este audio.'));
     }
     return card;
   }
 
   function buildPlayer() {
-    const playBtn = h('div', { class: 'play-btn', onClick: onPlayPause, style: {
-      width: '46px', height: '46px', flex: 'none', borderRadius: '50%', background: 'var(--brand-500)', color: '#fff',
-      display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+    const playBtn = h('button', { type: 'button', class: 'play-btn', onClick: onPlayPause, 'aria-label': 'Reproducir', style: {
+      width: '46px', height: '46px', flex: 'none', borderRadius: '50%', background: 'var(--btn-primary)', color: '#fff',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', border: '0', padding: '0',
     } });
     refs.playBtn = playBtn;
 
     const statusLabel = h('span', { style: { fontWeight: '600', whiteSpace: 'nowrap', flex: 'none' } });
-    const timeLabel = h('span', { style: { fontVariantNumeric: 'tabular-nums', color: 'var(--gray-500)', fontWeight: '500', whiteSpace: 'nowrap', flex: 'none', paddingLeft: '12px' } });
+    const timeLabel = h('span', { style: { fontVariantNumeric: 'tabular-nums', color: 'var(--gray-600)', fontWeight: '500', whiteSpace: 'nowrap', flex: 'none', paddingLeft: '12px' } });
     refs.statusLabel = statusLabel; refs.timeLabel = timeLabel;
 
     const band = h('div', { style: { display: 'none' } });
@@ -736,13 +759,13 @@
 
     const rateLabel = h('span', {}, fmtRate(state.rate));
     refs.rateLabel = rateLabel;
-    const rateBtn = h('div', { class: 'rate-btn', onClick: cycleRate, title: 'Velocidad de reproducción', style: {
+    const rateBtn = h('button', { type: 'button', class: 'rate-btn', onClick: cycleRate, title: 'Velocidad de reproducción', 'aria-label': 'Velocidad de reproducción', style: {
       display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px', padding: '8px 11px',
       border: '1px solid var(--gray-300)', borderRadius: '6px', fontSize: '12.5px', fontWeight: '700', color: 'var(--gray-700)',
       cursor: 'pointer', flex: 'none', fontVariantNumeric: 'tabular-nums', minWidth: '64px',
     } }, svg(I.gauge), rateLabel);
 
-    const exitBtn = h('div', { class: 'exit-seg', onClick: clearSegment, style: {
+    const exitBtn = h('button', { type: 'button', class: 'exit-seg', onClick: clearSegment, style: {
       display: 'none', alignItems: 'center', gap: '7px', padding: '8px 12px', border: '1px solid var(--gray-300)',
       borderRadius: '6px', fontSize: '12.5px', fontWeight: '600', color: 'var(--gray-600)', cursor: 'pointer', flex: 'none',
     } }, svg(I.xThin), 'Salir del segmento');
@@ -767,7 +790,7 @@
 
   function startTimeBtn() {
     const set = state.startOffset != null;
-    return h('div', { class: 'jump-btn', onClick: setStartTime, title: 'Hora de inicio del audio — calcula el horario real de cada mención', style: {
+    return h('button', { type: 'button', class: 'jump-btn', onClick: setStartTime, title: 'Hora de inicio del audio — calcula el horario real de cada mención', style: {
       display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '6px 11px', borderRadius: '6px',
       fontSize: '12px', fontWeight: '600', cursor: 'pointer',
       border: '1px solid ' + (set ? 'var(--brand-400)' : 'var(--gray-200)'),
@@ -777,7 +800,8 @@
   function karaokeToggle() {
     const on = state.wordKaraoke;
     const disabled = state.segments.length > WORD_MAX;
-    const btn = h('div', { class: 'jump-btn', onClick: disabled ? null : toggleKaraoke,
+    const btn = h('button', { type: 'button', class: 'jump-btn', onClick: disabled ? null : toggleKaraoke, disabled: disabled,
+      'aria-pressed': on && !disabled ? 'true' : 'false',
       title: disabled ? 'Desactivado en transcripciones muy largas' : 'Resaltar palabra por palabra mientras suena', style: {
         display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '6px 11px', borderRadius: '6px',
         fontSize: '12px', fontWeight: '600', cursor: disabled ? 'default' : 'pointer',
@@ -802,6 +826,8 @@
     if (!refs.playBtn) return;
     refs.playBtn.innerHTML = '';
     refs.playBtn.appendChild(svg(state.isPlaying ? I.pause : I.play));
+    refs.playBtn.setAttribute('aria-label', state.isPlaying ? 'Pausar' : 'Reproducir');
+    refs.playBtn.setAttribute('aria-pressed', state.isPlaying ? 'true' : 'false');
     const hasSeg = state.segmentStart != null && state.segmentEnd != null;
     let label, color;
     if (hasSeg) { label = 'Reproduciendo mención · ' + fmt(state.segmentStart) + ' – ' + fmt(state.segmentEnd); color = 'var(--brand-600)'; }
@@ -983,13 +1009,13 @@
     const el = c.querySelector('[data-seg-index="' + i + '"]'); if (!el) return;
     const top = el.offsetTop, hh = el.offsetHeight;
     if (top < c.scrollTop + 24 || top + hh > c.scrollTop + c.clientHeight - 24) {
-      c.scrollTo({ top: Math.max(0, top - c.clientHeight * 0.38), behavior: 'smooth' });
+      c.scrollTo({ top: Math.max(0, top - c.clientHeight * 0.38), behavior: scrollBehavior() });
     }
   }
   function hardScroll(i) {
     const c = refs.scroll; if (!c) return;
     const el = c.querySelector('[data-seg-index="' + i + '"]'); if (!el) return;
-    c.scrollTo({ top: Math.max(0, el.offsetTop - c.clientHeight * 0.35), behavior: 'smooth' });
+    c.scrollTo({ top: Math.max(0, el.offsetTop - c.clientHeight * 0.35), behavior: scrollBehavior() });
   }
 
   /* ============================================================
@@ -1243,17 +1269,20 @@
   function clockOf(segSec) { return state.startOffset == null ? null : fmtClock(state.startOffset + segSec); }
   function setStartTime() {
     const cur = state.startOffset == null ? '' : fmtClock(state.startOffset).slice(0, 5);
-    const v = window.prompt('Hora de inicio del audio (HH:MM o HH:MM:SS). Dejalo vacío para quitarla:', cur);
-    if (v == null) return;
-    let sec = null;
-    if (v.trim() !== '') { sec = parseClock(v); if (sec == null) { toast('Formato inválido. Usá HH:MM (ej: 09:00).', true); return; } }
-    state.startOffset = sec;
-    if (state.sessionId) {
-      fetch(API_BASE + '/api/sessions/' + state.sessionId + '/start', {
-        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ startSeconds: sec }),
-      }).catch(() => {});
-    }
-    renderApp();
+    askText('Hora de inicio del audio', cur, {
+      hint: 'Formato HH:MM o HH:MM:SS. Dejalo vacío para quitarla.', placeholder: 'Ej: 09:00', confirmLabel: 'Guardar',
+    }).then((v) => {
+      if (v == null) return;
+      let sec = null;
+      if (v.trim() !== '') { sec = parseClock(v); if (sec == null) { toast('Formato inválido. Usá HH:MM (ej: 09:00).', true); return; } }
+      state.startOffset = sec;
+      if (state.sessionId) {
+        fetch(API_BASE + '/api/sessions/' + state.sessionId + '/start', {
+          method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ startSeconds: sec }),
+        }).catch(() => {});
+      }
+      renderApp();
+    });
   }
 
   let toastTimer = 0;
@@ -1270,6 +1299,73 @@
     el.style.background = isErr ? 'var(--red-600)' : 'var(--gray-800)';
     el.textContent = msg; el.style.display = 'block';
     clearTimeout(toastTimer); toastTimer = setTimeout(() => { el.style.display = 'none'; }, 3200);
+  }
+
+  /* ---- Diálogos accesibles (reemplazan window.prompt / window.confirm) ----
+     <dialog> nativo: foco atrapado, ESC cierra, backdrop. Devuelven Promise. */
+  const dlgBtnGhost = { padding: '9px 16px', border: '1px solid var(--gray-300)', borderRadius: '6px', background: '#fff', color: 'var(--gray-700)', fontSize: '14px', fontWeight: '600', cursor: 'pointer' };
+  const dlgBtnPrimary = { padding: '9px 16px', border: '0', borderRadius: '6px', background: 'var(--btn-primary)', color: '#fff', fontSize: '14px', fontWeight: '600', cursor: 'pointer' };
+  const dlgBtnDanger = { padding: '9px 16px', border: '0', borderRadius: '6px', background: 'var(--red-600)', color: '#fff', fontSize: '14px', fontWeight: '600', cursor: 'pointer' };
+
+  function modalShell(titleText, bodyNodes, resolve) {
+    const dlg = h('dialog', { 'aria-label': titleText, style: {
+      border: '0', borderRadius: 'var(--radius-lg)', padding: '0', width: '420px', maxWidth: '92vw',
+      boxShadow: 'var(--shadow-2xl)', color: 'var(--gray-800)', background: '#fff',
+    } });
+    let closed = false;
+    const close = (val) => { if (closed) return; closed = true; try { dlg.close(); } catch (_) {} dlg.remove(); resolve(val); };
+    dlg.appendChild(h('div', { style: { padding: '22px' } }, ...bodyNodes(close)));
+    dlg.addEventListener('cancel', (e) => { e.preventDefault(); close(null); });   // ESC → cancela
+    document.body.appendChild(dlg);
+    try { dlg.showModal(); } catch (_) { dlg.remove(); close(null); }
+    return dlg;
+  }
+
+  // askText: reemplaza prompt. Resuelve con el texto, o null si cancela/ESC.
+  function askText(title, current, opts) {
+    opts = opts || {};
+    return new Promise((resolve) => {
+      let inputEl;
+      modalShell(title, (close) => {
+        const input = h('input', { value: current == null ? '' : String(current), placeholder: opts.placeholder || '', 'aria-label': title, style: {
+          width: '100%', marginTop: opts.hint ? '4px' : '14px', padding: '10px 12px', border: '1px solid var(--gray-300)', borderRadius: '6px',
+          fontFamily: 'var(--font-sans)', fontSize: '14px', color: 'var(--gray-800)', outline: 'none',
+        } });
+        input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); close(input.value); } });
+        inputEl = input;
+        return [
+          h('h2', { style: { margin: '0', fontSize: '16px', fontWeight: '700', color: 'var(--gray-800)' } }, title),
+          opts.hint ? h('div', { style: { fontSize: '13px', color: 'var(--gray-600)', marginTop: '6px', lineHeight: '1.5' } }, opts.hint) : null,
+          input,
+          h('div', { style: { display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '18px' } },
+            h('button', { type: 'button', class: 'tb-btn', onClick: () => close(null), style: dlgBtnGhost }, 'Cancelar'),
+            h('button', { type: 'button', class: 'brand-add', onClick: () => close(input.value), style: dlgBtnPrimary }, opts.confirmLabel || 'Guardar'),
+          ),
+        ];
+      }, resolve);
+      setTimeout(() => { if (inputEl) { inputEl.focus(); inputEl.select(); } }, 0);
+    });
+  }
+
+  // askConfirm: reemplaza confirm. Resuelve true/false.
+  function askConfirm(message, opts) {
+    opts = opts || {};
+    return new Promise((resolve) => {
+      let confirmEl;
+      modalShell(opts.title || 'Confirmar', (close) => {
+        const confirmBtn = h('button', { type: 'button', onClick: () => close(true), style: opts.danger ? dlgBtnDanger : dlgBtnPrimary }, opts.confirmLabel || 'Aceptar');
+        confirmEl = confirmBtn;
+        return [
+          opts.title ? h('h2', { style: { margin: '0 0 8px', fontSize: '16px', fontWeight: '700', color: 'var(--gray-800)' } }, opts.title) : null,
+          h('div', { style: { fontSize: '14px', color: 'var(--gray-700)', lineHeight: '1.55' } }, message),
+          h('div', { style: { display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '18px' } },
+            h('button', { type: 'button', class: 'tb-btn', onClick: () => close(false), style: dlgBtnGhost }, opts.cancelLabel || 'Cancelar'),
+            confirmBtn,
+          ),
+        ];
+      }, resolve);
+      setTimeout(() => { if (confirmEl) confirmEl.focus(); }, 0);
+    });
   }
 
   // Lista de audios recientes (no vencidos) en la pantalla de carga.
@@ -1313,21 +1409,26 @@
         b.addEventListener('click', (e) => { e.stopPropagation(); fn(); });
         return b;
       };
+      const openBtn = h('button', { type: 'button', style: { background: 'transparent', border: '0', fontSize: '12px', fontWeight: '600', color: 'var(--brand-600)', paddingLeft: '2px', cursor: 'pointer' } }, 'Abrir →');
+      openBtn.addEventListener('click', (e) => { e.stopPropagation(); openSession(s.id); });
       right = h('div', { style: { flex: 'none', display: 'flex', alignItems: 'center', gap: '6px' } },
         iconBtn(I.edit, 'Renombrar', () => renameSession(s.id, s.fileName)),
-        iconBtn(I.trash, 'Borrar', () => { if (window.confirm('¿Borrar "' + s.fileName + '" y sus reportes? No se puede deshacer.')) discardRecent(s.id); }, true),
-        h('div', { style: { fontSize: '12px', fontWeight: '600', color: 'var(--brand-600)', paddingLeft: '2px' } }, 'Abrir →'),
+        iconBtn(I.trash, 'Borrar', () => askConfirm('¿Borrar "' + s.fileName + '" y sus reportes? No se puede deshacer.', { danger: true, confirmLabel: 'Borrar' }).then(ok => { if (ok) discardRecent(s.id); }), true),
+        openBtn,
       );
     }
 
-    return h('div', { class: 'recent-row', onClick, style: {
-      display: 'flex', alignItems: 'center', gap: '12px', padding: '11px 14px', background: '#fff',
+    // Filas processing/errored no tienen botones internos → la fila entera es un <button>.
+    // La fila "ready" queda como <div> (contiene botones) y su acción de abrir está en openBtn.
+    const rowTag = (processing || errored) ? 'button' : 'div';
+    return h(rowTag, { type: rowTag === 'button' ? 'button' : null, class: 'recent-row', onClick, style: {
+      display: 'flex', alignItems: 'center', gap: '12px', padding: '11px 14px', background: '#fff', width: '100%', textAlign: 'left', font: 'inherit',
       border: '1px solid var(--gray-200)', borderRadius: '8px', cursor: 'pointer', marginBottom: '8px', transition: 'background .15s, border-color .15s',
     } },
-      h('div', { style: { width: '34px', height: '34px', flex: 'none', borderRadius: '7px', background: errored ? '#FFF5F5' : 'var(--brand-50)', display: 'flex', alignItems: 'center', justifyContent: 'center' } }, svg(I.wave(errored ? 'var(--red-600)' : 'var(--brand-600)'))),
+      h('div', { style: { width: '34px', height: '34px', flex: 'none', borderRadius: '7px', background: errored ? 'var(--red-50)' : 'var(--brand-50)', display: 'flex', alignItems: 'center', justifyContent: 'center' } }, svg(I.wave(errored ? 'var(--red-600)' : 'var(--brand-600)'))),
       h('div', { style: { flex: '1', minWidth: '0' } },
         h('div', { style: { fontSize: '14px', fontWeight: '600', color: 'var(--gray-800)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, s.fileName),
-        h('div', { style: { fontSize: '12px', color: errored ? 'var(--red-600)' : 'var(--gray-500)', marginTop: '2px' } }, sub),
+        h('div', { style: { fontSize: '12px', color: errored ? 'var(--red-600)' : 'var(--gray-600)', marginTop: '2px' } }, sub),
       ),
       right,
     );
@@ -1340,7 +1441,7 @@
 
   // Renombrar una transcripción (poner un título para reconocerla).
   async function renameSession(id, current) {
-    const t = window.prompt('Título de la transcripción:', current || '');
+    const t = await askText('Título de la transcripción', current || '', { placeholder: 'Nombre para reconocerlo después', confirmLabel: 'Guardar' });
     if (t == null) return;
     const title = t.trim();
     if (!title || title === current) return;
@@ -1394,7 +1495,7 @@
     const msg = hasSession
       ? '¿Descartar este audio? Se borra del servidor junto con los reportes ya generados para sus marcas. Esta acción no se puede deshacer.'
       : '¿Descartar el audio cargado?';
-    if (!window.confirm(msg)) return;
+    if (!(await askConfirm(msg, { title: 'Descartar audio', danger: true, confirmLabel: 'Descartar' }))) return;
     const id = state.sessionId;
     if (id) {
       try { await fetch(API_BASE + '/api/sessions/' + id, { method: 'DELETE' }); } catch (e) {}
@@ -1713,7 +1814,7 @@
       copyBtn.lastChild.textContent = '¡Copiado!';
       setTimeout(() => { copyBtn.lastChild.textContent = 'Copiar'; }, 1600);
     });
-    const note = h('div', { style: { fontSize: '11px', color: 'var(--gray-500)', marginTop: '5px', lineHeight: '1.45' } },
+    const note = h('div', { style: { fontSize: '11px', color: 'var(--gray-600)', marginTop: '5px', lineHeight: '1.45' } },
       'Link público (cualquiera con el link lo ve). Vence el ' + shortDateLong(expiresAt) + '. ',
       h('a', { href: url, target: '_blank', rel: 'noopener', class: 'link-sample', style: { color: 'var(--brand-600)', fontWeight: '600', textDecoration: 'none' } }, 'Abrir'),
     );

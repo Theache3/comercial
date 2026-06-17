@@ -5,9 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Menciones · Radio Mitre</title>
   <meta name="robots" content="noindex, nofollow">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;600;700;800&display=swap" media="print" onload="this.media='all'">
+  <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;600;700;800&display=swap"></noscript>
   <style>
     :root{
-      --brand:#319795;--brand-d:#2C7A7B;--ink:#1A202C;--muted:#4A5568;--sub:#718096;
+      --brand:#319795;--brand-d:#2C7A7B;--brand-dd:#285E61;--ink:#1A202C;--muted:#4A5568;--sub:#4A5568;
       --line:#E2E8F0;--bg:#F7FAFC;--card:#fff;
     }
     *{box-sizing:border-box}
@@ -28,9 +32,9 @@
     .chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
     .chip{font-size:12px;font-weight:700;padding:4px 10px;border-radius:999px;background:#EDF2F7;color:var(--muted)}
     .actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px}
-    .playall{display:inline-flex;align-items:center;gap:8px;background:var(--brand);color:#fff;border:0;
+    .playall{display:inline-flex;align-items:center;gap:8px;background:var(--brand-d);color:#fff;border:0;
       border-radius:6px;padding:9px 14px;font-family:inherit;font-size:14px;font-weight:600;cursor:pointer}
-    .playall:hover{background:var(--brand-d)}
+    .playall:hover{background:var(--brand-dd)}
     .pdfbtn{display:inline-flex;align-items:center;gap:8px;background:#fff;color:var(--ink);border:1px solid var(--line);
       border-radius:6px;padding:9px 14px;font-family:inherit;font-size:14px;font-weight:600;cursor:pointer}
     .pdfbtn:hover{background:var(--bg)}
@@ -39,11 +43,11 @@
 
     ol.frags{list-style:none;margin:18px 0 0;padding:0;display:flex;flex-direction:column;gap:10px}
     .frag{display:flex;gap:12px;align-items:flex-start;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:12px 14px}
-    .play{flex:none;width:40px;height:40px;border-radius:50%;border:0;background:var(--brand);color:#fff;
+    .play{flex:none;width:40px;height:40px;border-radius:50%;border:0;background:var(--brand-d);color:#fff;
       display:flex;align-items:center;justify-content:center;cursor:pointer}
-    .play:hover{background:var(--brand-d)}
+    .play:hover{background:var(--brand-dd)}
     .play:disabled{background:#CBD5E0;cursor:not-allowed}
-    .play.playing{background:var(--brand-d)}
+    .play.playing{background:var(--brand-dd)}
     .dl{flex:none;width:40px;height:40px;border-radius:8px;border:1px solid var(--line);background:#fff;color:var(--brand-d);
       display:flex;align-items:center;justify-content:center;cursor:pointer;text-decoration:none}
     .dl:hover{background:var(--bg)}
@@ -61,6 +65,10 @@
     @keyframes spin{to{transform:rotate(360deg)}}
 
     footer{margin-top:26px;text-align:center;color:var(--sub);font-size:12px}
+
+    @media (prefers-reduced-motion: reduce){
+      *,*::before,*::after{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important}
+    }
 
     @media print{
       body{background:#fff}

@@ -4,6 +4,11 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Verificador de menciones · Radio Mitre</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <!-- Roboto sin bloquear el render: media=print → onload conmuta a all (texto en fallback hasta que carga) -->
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;600;700;800&display=swap" media="print" onload="this.media='all'">
+  <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;600;700;800&display=swap"></noscript>
   <link rel="stylesheet" href="colors_and_type.css">
   <style>
     * { box-sizing: border-box; }
@@ -11,6 +16,11 @@
     body { font-family: var(--font-sans); background: var(--gray-50); color: var(--gray-800); }
     #app { height: 100vh; }
     input { font-family: var(--font-sans); }
+    button { font: inherit; color: inherit; }
+    /* Foco visible por teclado (no en click de mouse) */
+    :focus-visible { outline: 2px solid var(--brand-500); outline-offset: 2px; }
+    :focus:not(:focus-visible) { outline: none; }
+    dialog::backdrop { background: rgba(0,0,0,0.48); }
 
     /* Scrollbars — match prototype */
     ::-webkit-scrollbar { width: 11px; height: 11px; }
@@ -22,25 +32,31 @@
     .tb-btn:hover     { background: var(--gray-50) !important; border-color: var(--gray-400) !important; }
     .jump-btn:hover   { background: var(--gray-50) !important; }
     .seg-row:hover    { background: var(--gray-50); }
-    .brand-add:hover  { background: var(--brand-600) !important; }
+    .brand-add:hover  { background: var(--btn-primary-hover) !important; }
     .chip-x:hover     { background: var(--gray-200) !important; color: var(--gray-700) !important; }
     .appear-btn:hover { background: var(--gray-50); }
-    .play-btn:hover   { background: var(--brand-600) !important; }
+    .play-btn:hover   { background: var(--btn-primary-hover) !important; }
     .exit-seg:hover   { background: var(--gray-50) !important; }
     .link-sample:hover{ text-decoration: underline; }
     .brand-input:focus{ border-color: var(--brand-500) !important; box-shadow: 0 0 0 3px var(--brand-100); }
     .dropzone:hover   { border-color: var(--brand-400) !important; background: var(--brand-50) !important; }
-    .confirm-btn.ready:hover { background: var(--brand-600) !important; }
+    .confirm-btn.ready:hover { background: var(--btn-primary-hover) !important; }
     .rate-btn:hover   { background: var(--gray-50) !important; border-color: var(--gray-400) !important; }
     .csv-btn:not(.disabled):hover { background: var(--gray-50) !important; border-color: var(--gray-400) !important; }
     .send-btn:hover   { background: var(--brand-100) !important; border-color: var(--brand-400) !important; }
-    .link-btn:hover   { background: var(--brand-600) !important; }
+    .link-btn:hover   { background: var(--btn-primary-hover) !important; }
     .recent-row:hover { background: var(--gray-50) !important; border-color: var(--gray-300) !important; }
     .copy-btn:hover   { background: var(--gray-50) !important; border-color: var(--gray-400) !important; }
-    .discard-btn:hover{ background: #FFF5F5 !important; border-color: var(--red-600) !important; color: var(--red-600) !important; }
+    .discard-btn:hover{ background: var(--red-50) !important; border-color: var(--red-600) !important; color: var(--red-600) !important; }
     @keyframes mspin { to { transform: rotate(360deg); } }
     .mspin { animation: mspin .8s linear infinite; }
     .audio-row:hover { background: var(--gray-100) !important; }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: .001ms !important; animation-iteration-count: 1 !important;
+        transition-duration: .001ms !important; scroll-behavior: auto !important;
+      }
+    }
   </style>
 </head>
 <body>
