@@ -20,6 +20,7 @@ const db = require('./db');
 const audioLib = require('./audio');
 const { transcribe } = require('./transcribe');
 const { cleanupExpired } = require('./cleanup');
+const hdxBridge = require('./hdx-bridge');
 
 /* ---------------- .env mínimo (sin dependencias) ---------------- */
 (function loadEnv() {
@@ -41,6 +42,7 @@ const APP_PASSWORD = process.env.APP_PASSWORD || '';
 const RETENTION_DAYS = Number(process.env.RETENTION_DAYS) || 21;
 const RETENTION_MS = RETENTION_DAYS * 24 * 60 * 60 * 1000;
 const PUBLIC_BASE_URL = (process.env.PUBLIC_BASE_URL || '').replace(/\/+$/, '');
+const LOGGER_MAX_AUDIO_SEC = Number(process.env.LOGGER_MAX_AUDIO_SEC) || 7 * 3600;  // guarda dura (franja capada a 6h + bloques de borde)
 
 const MAX_AUDIO_BYTES = 250 * 1024 * 1024;  // audio completo por sesión
 const MAX_CLIP_BYTES = 40 * 1024 * 1024;    // un clip de mención
@@ -163,24 +165,55 @@ async function pumpJobs() {
   try { await fn(); } catch (e) { console.error('[job] error', e); }
   finally { _jobBusy = false; pumpJobs(); }
 }
+// concat (en orden) + transcribe + guardar resultado. Compartido por la carga
+// manual (processSession) y la carga desde el aire (processLoggerSession).
+async function buildAndTranscribe(id, rawPaths) {
+  const dir = path.join(db.SESSIONS_DIR, id);
+  const outPath = path.join(dir, 'audio.mp3');
+  const { duration } = await audioLib.concat(rawPaths, outPath);
+  const segments = await transcribe(outPath, { language: 'es' });
+  if (!segments.length) throw new Error('La transcripción no devolvió texto.');
+  db.setSessionResult(id, {
+    audio_file: 'audio.mp3', audio_mime: 'audio/mpeg',
+    transcript_json: JSON.stringify(segments),
+    duration: duration || segments[segments.length - 1].end || 0,
+  });
+  return { segments: segments.length, duration };
+}
+
 async function processSession(id, rawPaths) {
   const dir = path.join(db.SESSIONS_DIR, id);
   try {
-    const outPath = path.join(dir, 'audio.mp3');
-    const { duration } = await audioLib.concat(rawPaths, outPath);
-    const segments = await transcribe(outPath, { language: 'es' });
-    if (!segments.length) throw new Error('La transcripción no devolvió texto.');
-    db.setSessionResult(id, {
-      audio_file: 'audio.mp3', audio_mime: 'audio/mpeg',
-      transcript_json: JSON.stringify(segments),
-      duration: duration || segments[segments.length - 1].end || 0,
-    });
-    console.log(`[job] sesión ${id} lista (${segments.length} segmentos, ${Math.round(duration)}s).`);
+    const { segments, duration } = await buildAndTranscribe(id, rawPaths);
+    console.log(`[job] sesión ${id} lista (${segments} segmentos, ${Math.round(duration)}s).`);
   } catch (e) {
     db.updateSessionStatus(id, 'error', String((e && e.message) || e).slice(0, 500));
     console.error(`[job] sesión ${id} error:`, (e && e.message) || e);
   } finally {
     rmDir(path.join(dir, 'raw'));
+  }
+}
+
+// Carga desde el aire: baja los bloques del logger (vía bridge) a raw/ y reusa
+// el mismo concat + transcribe. La hora de inicio ya se setea en el endpoint.
+async function processLoggerSession(id, radio, blocks) {
+  const dir = path.join(db.SESSIONS_DIR, id);
+  const rawDir = path.join(dir, 'raw');
+  try {
+    fs.mkdirSync(rawDir, { recursive: true });
+    const rawPaths = [];
+    for (let i = 0; i < blocks.length; i++) {
+      const dest = path.join(rawDir, 'src-' + String(i).padStart(3, '0'));
+      rawPaths.push(await hdxBridge.downloadBlock({ radio, code: blocks[i].code }, dest));
+      console.log(`[job] logger ${id}: bloque ${i + 1}/${blocks.length} bajado (${blocks[i].code}).`);
+    }
+    const { segments } = await buildAndTranscribe(id, rawPaths);
+    console.log(`[job] sesión logger ${id} lista (${blocks.length} bloques, ${segments} segmentos).`);
+  } catch (e) {
+    db.updateSessionStatus(id, 'error', String((e && e.message) || e).slice(0, 500));
+    console.error(`[job] sesión logger ${id} error:`, (e && e.message) || e);
+  } finally {
+    rmDir(rawDir);
   }
 }
 
@@ -225,6 +258,70 @@ app.post('/api/sessions', assignSessionId, uploadSession.array('audios', 50), (r
     });
     res.json({ id: req.sessionId, status: 'processing', createdAt: created_at, expiresAt: expires_at });
     enqueueJob(() => processSession(req.sessionId, rawPaths));
+  } catch (e) {
+    rmDir(dir);
+    if (!res.headersSent) res.status(500).json({ error: 'No se pudo crear la sesión.' });
+  }
+});
+
+/* ---------------- cargar desde el aire (logger HDX vía bridge) ---------------- */
+// radios disponibles (para el selector; hoy solo Mitre)
+app.get('/api/logger/radios', async (_req, res) => {
+  try { res.json(await hdxBridge.listLoggerRadios()); }
+  catch (e) { res.status(502).json({ error: e.message }); }
+});
+
+// preview: qué bloques cubren la franja (para mostrar "N bloques, ~1h30" antes de cargar)
+app.get('/api/logger/preview', async (req, res) => {
+  const radio = String(req.query.radio || 'mitre');
+  const date = String(req.query.date || '');
+  const from = String(req.query.from || '');
+  const to = String(req.query.to || '');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return res.status(400).json({ error: 'Fecha inválida (YYYY-MM-DD).' });
+  if (!/^\d{1,2}:\d{2}$/.test(from) || !/^\d{1,2}:\d{2}$/.test(to)) return res.status(400).json({ error: 'Horas inválidas (HH:MM).' });
+  try { res.json(await hdxBridge.listLoggerBlocks({ radio, date, from, to })); }
+  catch (e) { res.status(502).json({ error: e.message }); }
+});
+
+// crear sesión desde el aire: baja los bloques que cubren la franja y los transcribe (async).
+app.post('/api/sessions/from-logger', async (req, res) => {
+  const radio = String((req.body && req.body.radio) || 'mitre');
+  const date = String((req.body && req.body.date) || '');
+  const from = String((req.body && req.body.from) || '');
+  const to = String((req.body && req.body.to) || '');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return res.status(400).json({ error: 'Fecha inválida (YYYY-MM-DD).' });
+  if (!/^\d{1,2}:\d{2}$/.test(from) || !/^\d{1,2}:\d{2}$/.test(to)) return res.status(400).json({ error: 'Horas inválidas (HH:MM).' });
+
+  let preview;
+  try { preview = await hdxBridge.listLoggerBlocks({ radio, date, from, to }); }
+  catch (e) { return res.status(502).json({ error: 'No se pudo consultar el aire: ' + e.message }); }
+
+  const blocks = Array.isArray(preview.blocks) ? preview.blocks : [];
+  if (!blocks.length) return res.status(404).json({ error: 'No se encontraron bloques del aire para esa franja.' });
+  if ((preview.totalDurationSec || 0) > LOGGER_MAX_AUDIO_SEC) {
+    return res.status(400).json({ error: 'El audio supera el máximo permitido (6 h por carga).' });
+  }
+
+  const id = newId(12);
+  const dir = path.join(db.SESSIONS_DIR, id);
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+    const created_at = Date.now();
+    const expires_at = created_at + RETENTION_MS;
+    const label = preview.label || radio;
+    const fileName = `Aire ${label} ${date} ${from}-${to}`;
+    db.createSession({
+      id, file_name: fileName,
+      audio_file: null, audio_mime: null, transcript_json: '[]', brands_json: '[]',
+      created_at, expires_at, status: 'processing',
+      source_names_json: JSON.stringify(blocks.map(b => b.title)), duration: null,
+    });
+    if (preview.startOffsetSec != null) db.updateStartOffset(id, preview.startOffsetSec);
+    res.json({
+      id, status: 'processing', createdAt: created_at, expiresAt: expires_at,
+      blockCount: blocks.length, totalDurationSec: preview.totalDurationSec || 0,
+    });
+    enqueueJob(() => processLoggerSession(id, radio, blocks));
   } catch (e) {
     rmDir(dir);
     if (!res.headersSent) res.status(500).json({ error: 'No se pudo crear la sesión.' });

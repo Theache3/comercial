@@ -1,5 +1,18 @@
 # Changelog
 
+## En curso — Cargar desde el aire (logger HDX)
+
+- Nueva solapa **"Desde el aire"** en la pantalla de carga: elegís **radio** (Radio Mitre o La 100),
+  **fecha** y **franja horaria**, y la app trae de HDX los **bloques del logger** (aire grabado,
+  ~30 min c/u) que cubren esa franja, los une y los transcribe — reusando el flujo existente.
+  La radio se distingue por categoría en HDX (`LG MITRE AC`, `LG La 100 AC`); sumar otra es una
+  línea en el config `LOGGERS` de cronograma.
+- Se bajan **bloques completos** (puede haber audio antes/después de la franja); **tope 6 h** por carga.
+  La **hora de inicio** se setea al arranque real del primer bloque, así el horario de cada mención sale correcto.
+- **Puente a HDX:** HDX vive en la red corp y solo es alcanzable por el túnel del EC2 de **cronograma**.
+  Se agregaron endpoints `/api/hdx/logger*` en cronograma (token propio) y comercial los consume por
+  HTTPS (`server/hdx-bridge.js`). Config: `LOGGER_BRIDGE_URL` / `LOGGER_BRIDGE_TOKEN` en `server/.env`.
+
 ## v1.0 — 2026-06-16
 
 Primer release completo: de prototipo 100% client-side a aplicación con backend, persistencia,

@@ -71,7 +71,18 @@ RETENTION_DAYS=21              # el reloj corre desde la carga del audio
 PUBLIC_BASE_URL=https://comlog.cienradios.com   # para construir las URLs de reporte
 ASSEMBLYAI_API_KEY=<key>      # transcripción primaria (al cargar varios audios)
 OPENAI_API_KEY=<key>          # transcripción fallback (Whisper). Con una de las dos alcanza.
+
+# Cargar desde el aire (logger HDX vía bridge de cronograma). Sin esto, la opción queda inactiva.
+LOGGER_BRIDGE_URL=https://cronograma.cienradios.com
+LOGGER_BRIDGE_TOKEN=<mismo secreto que en cronograma>
+LOGGER_BRIDGE_BASIC=<user:pass de la basic-auth de nginx de cronograma, si aplica>
 ```
+
+> **Cargar desde el aire:** la app puede traer el aire grabado (logger HDX) de Radio Mitre por
+> franja horaria. HDX vive en la red corp y solo es alcanzable por el túnel que termina en el EC2
+> de **cronograma**; comercial le pega a los endpoints `/api/hdx/logger*` que cronograma expone
+> (ver `cronograma/docs/HDX_REFERENCIA.md`). Requiere que en cronograma esté seteado el mismo
+> `LOGGER_BRIDGE_TOKEN`. La transcripción de varios bloques de 30 min consume API por minuto.
 
 > **Seguridad:** la herramienta interna (subir audio, ver transcripción) queda detrás de Basic
 > Auth. Los **reportes a marcas** (`/r/<token>`, `/api/reports/*`) son **públicos por token**
@@ -110,7 +121,8 @@ Desde la carpeta del proyecto, en local. **No** se tocan `server/.env` ni `serve
 ```bash
 KEY=/ruta/ls-key.pem
 tar czf - index.html app.js report.html report.js colors_and_type.css assets \
-  server/server.js server/db.js server/cleanup.js server/package.json server/package-lock.json deploy \
+  server/server.js server/db.js server/cleanup.js server/audio.js server/transcribe.js server/hdx-bridge.js \
+  server/package.json server/package-lock.json deploy \
   | ssh -i $KEY ubuntu@54.225.191.20 "mkdir -p /opt/menciones && tar xzf - -C /opt/menciones"
 
 # Si cambiaron dependencias:

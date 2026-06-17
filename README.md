@@ -65,6 +65,24 @@ Aparecen en una lista **ordenada alfabéticamente** por nombre; podés **reorden
 > Requiere una API key en el `.env` del backend (`ASSEMBLYAI_API_KEY` y/o `OPENAI_API_KEY`).
 > La transcripción tiene **costo por minuto** de audio.
 
+## Cargar desde el aire (logger de HDX)
+
+En la pantalla de carga, solapa **"Desde el aire"**: elegís **radio** (**Radio Mitre** o **La 100**),
+**fecha** y **franja horaria** (desde/hasta). La app busca en HDX los **bloques del aire grabado**
+(el logger guarda el aire en bloques de ~30 min) que **cubren** esa franja, los **baja, une y
+transcribe** automáticamente — el mismo flujo que la carga manual. Botón **"Buscar bloques"** muestra
+un preview (cuántos bloques y cuánto audio) antes de confirmar.
+
+- Se traen **bloques completos**, así que puede haber algo de audio **antes y después** de tu franja.
+- **Tope de 6 horas** por carga (la transcripción tiene costo por minuto).
+- La **hora de inicio** queda fijada al arranque real del primer bloque, así el horario (HH:MM:SS) de
+  cada mención corresponde al aire real.
+
+> **Requiere puente a HDX.** HDX está en la red corporativa y solo es alcanzable a través del túnel
+> que termina en el servidor de **cronograma**. Comercial consume los endpoints `/api/hdx/logger*`
+> que expone cronograma; se configura con `LOGGER_BRIDGE_URL` y `LOGGER_BRIDGE_TOKEN` en el `.env`
+> del backend (ver `deploy/INFRA.md`). Sin esa config, la solapa avisa que no está disponible.
+
 ## Persistencia (audios recientes)
 
 Cada audio que cargás se **guarda automáticamente** en el backend y queda disponible **21 días**.

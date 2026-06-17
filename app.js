@@ -113,6 +113,11 @@
     startOffset: null,       // hora de inicio (seg desde medianoche) → horario real de cada segmento
     processingError: null, _pollT: 0,
     uploadError: false, uploadErrorMsg: '',
+    // cargar desde el aire (logger HDX vía bridge)
+    uploadMode: 'files',     // 'files' | 'air'
+    loggerRadio: 'mitre', loggerRadios: null,
+    loggerDate: '', loggerFrom: '', loggerTo: '',
+    loggerPreview: null, loggerPreviewLoading: false, loggerError: '',
   };
 
   const RATES = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
@@ -299,11 +304,24 @@
     );
   }
 
-  function buildUpload() {
+  function uploadTab(id, label) {
+    const active = (state.uploadMode || 'files') === id;
+    return h('div', { onClick: () => {
+      if ((state.uploadMode || 'files') === id) return;
+      state.uploadMode = id; state.uploadError = false; state.loggerError = '';
+      renderApp();
+      if (id === 'air') loadLoggerRadios();
+    }, style: {
+      flex: '1', textAlign: 'center', padding: '11px 12px', fontSize: '13.5px', fontWeight: '600', cursor: 'pointer',
+      color: active ? 'var(--brand-700)' : 'var(--gray-500)',
+      borderBottom: '2px solid ' + (active ? 'var(--brand-500)' : 'var(--gray-200)'),
+    } }, label);
+  }
+
+  function buildFilesCardKids() {
     const audios = state.pendingAudios || [];
     const ready = audios.length > 0;
-
-    const cardKids = [
+    const kids = [
       h('div', { style: { fontSize: '21px', fontWeight: '700', color: 'var(--gray-800)' } }, 'Cargar audios'),
       h('div', { style: { fontSize: '14px', color: 'var(--gray-600)', marginTop: '6px', lineHeight: '1.5' } },
         'Subí uno o más audios (mp3, wav, m4a). Se transcriben automáticamente y se unen en un solo programa, en el orden de la lista.'),
@@ -317,14 +335,14 @@
         fontFamily: 'var(--font-sans)', fontSize: '14px', color: 'var(--gray-800)', outline: 'none',
       } });
       titleInput.addEventListener('input', e => { state.uploadTitle = e.target.value; });
-      cardKids.push(titleInput);
-      cardKids.push(h('div', { style: { fontSize: '12px', color: 'var(--gray-500)', margin: '16px 0 8px' } },
+      kids.push(titleInput);
+      kids.push(h('div', { style: { fontSize: '12px', color: 'var(--gray-500)', margin: '16px 0 8px' } },
         audios.length + (audios.length === 1 ? ' audio' : ' audios') + ' · arrastrá para reordenar (se unen en este orden)'));
       const list = h('div', { style: { display: 'flex', flexDirection: 'column', gap: '6px' } });
       audios.forEach((f, i) => list.appendChild(buildAudioRow(f, i)));
-      cardKids.push(list);
+      kids.push(list);
     }
-    cardKids.push(
+    kids.push(
       state.uploadError ? h('div', { style: {
         marginTop: '14px', padding: '10px 12px', background: '#FFF5F5', border: '1px solid #FEB2B2',
         borderRadius: '6px', fontSize: '13px', color: 'var(--red-600)',
@@ -342,6 +360,87 @@
         } }, svg(I.upload), 'Transcribir y cargar'),
       ),
     );
+    return kids;
+  }
+
+  function airField(label, input) {
+    return h('div', { style: { display: 'flex', flexDirection: 'column', gap: '5px', flex: '1', minWidth: '0' } },
+      h('label', { style: { fontSize: '12px', fontWeight: '600', color: 'var(--gray-600)' } }, label), input);
+  }
+  const airInputStyle = {
+    width: '100%', padding: '9px 11px', border: '1px solid var(--gray-300)', borderRadius: '6px',
+    fontFamily: 'var(--font-sans)', fontSize: '14px', color: 'var(--gray-800)', outline: 'none', background: '#fff',
+  };
+  function clearLoggerPreview() { state.loggerPreview = null; state.loggerError = ''; }
+
+  function buildAirCardKids() {
+    const radios = state.loggerRadios || [{ id: 'mitre', label: 'Radio Mitre' }];
+    const prev = state.loggerPreview;
+    const loading = state.loggerPreviewLoading;
+    const canSubmit = !!(prev && prev.count) && !loading;
+
+    const radioSel = h('select', { style: airInputStyle, onChange: (e) => { state.loggerRadio = e.target.value; clearLoggerPreview(); renderApp(); } },
+      ...radios.map(r => h('option', { value: r.id, selected: state.loggerRadio === r.id }, r.label)));
+    const dateIn = h('input', { type: 'date', value: state.loggerDate || '', style: airInputStyle,
+      onChange: (e) => { state.loggerDate = e.target.value; clearLoggerPreview(); renderApp(); } });
+    const fromIn = h('input', { type: 'time', value: state.loggerFrom || '', style: airInputStyle,
+      onChange: (e) => { state.loggerFrom = e.target.value; clearLoggerPreview(); renderApp(); } });
+    const toIn = h('input', { type: 'time', value: state.loggerTo || '', style: airInputStyle,
+      onChange: (e) => { state.loggerTo = e.target.value; clearLoggerPreview(); renderApp(); } });
+
+    const kids = [
+      h('div', { style: { fontSize: '21px', fontWeight: '700', color: 'var(--gray-800)' } }, 'Cargar desde el aire'),
+      h('div', { style: { fontSize: '14px', color: 'var(--gray-600)', marginTop: '6px', lineHeight: '1.5' } },
+        'Elegí radio, fecha y franja horaria. Buscamos en el aire grabado los bloques que la cubren y los transcribimos. Se bajan bloques completos (puede haber audio antes y después de tu franja). Máximo 6 horas.'),
+      h('div', { style: { display: 'flex', gap: '12px', marginTop: '20px' } }, airField('Radio', radioSel), airField('Fecha', dateIn)),
+      h('div', { style: { display: 'flex', gap: '12px', marginTop: '14px' } }, airField('Desde', fromIn), airField('Hasta', toIn)),
+    ];
+
+    if (state.loggerError) {
+      kids.push(h('div', { style: {
+        marginTop: '14px', padding: '10px 12px', background: '#FFF5F5', border: '1px solid #FEB2B2',
+        borderRadius: '6px', fontSize: '13px', color: 'var(--red-600)',
+      } }, state.loggerError));
+    }
+    if (prev && prev.count) {
+      const blocks = prev.blocks || [];
+      const last = blocks[blocks.length - 1];
+      const coverFrom = blocks.length ? secToHHMM(blocks[0].startSec) : '';
+      const coverTo = last ? secToHHMM(last.startSec + last.durationSec) : '';
+      kids.push(h('div', { style: {
+        marginTop: '16px', padding: '12px 14px', background: 'var(--brand-50)', border: '1px solid var(--brand-100)',
+        borderRadius: '8px', fontSize: '13px', color: 'var(--gray-700)', lineHeight: '1.6',
+      } },
+        h('div', { style: { fontWeight: '700', color: 'var(--brand-700)' } },
+          prev.count + (prev.count === 1 ? ' bloque' : ' bloques') + ' · ~' + fmtDur(prev.totalDurationSec || 0) + ' de audio'),
+        h('div', {}, 'Cubre desde ' + coverFrom + ' hasta ' + coverTo + ' (bloques completos).'),
+      ));
+    }
+
+    kids.push(h('div', { style: {
+      display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px',
+      marginTop: '24px', paddingTop: '20px', borderTop: '1px solid var(--gray-100)',
+    } },
+      h('div', { class: 'link-sample', onClick: loading ? null : loadLoggerPreview, style: {
+        display: 'inline-flex', alignItems: 'center', gap: '7px', padding: '9px 16px', borderRadius: '6px',
+        fontSize: '14px', fontWeight: '600', border: '1px solid var(--gray-300)', background: '#fff',
+        color: 'var(--gray-700)', cursor: loading ? 'wait' : 'pointer',
+      } }, svg(I.search2 || I.search), loading ? 'Buscando…' : 'Buscar bloques'),
+      h('div', { class: 'confirm-btn' + (canSubmit ? ' ready' : ''), onClick: canSubmit ? confirmFromLogger : null, style: {
+        display: 'inline-flex', alignItems: 'center', gap: '7px', padding: '9px 18px', borderRadius: '6px',
+        fontSize: '14px', fontWeight: '600',
+        background: canSubmit ? 'var(--brand-500)' : 'var(--gray-200)', color: canSubmit ? '#fff' : 'var(--gray-400)',
+        cursor: canSubmit ? 'pointer' : 'not-allowed',
+      } }, svg(I.upload), 'Transcribir y cargar'),
+    ));
+    return kids;
+  }
+
+  function buildUpload() {
+    const mode = state.uploadMode || 'files';
+    const tabs = h('div', { style: { display: 'flex', margin: '-30px -30px 22px', borderBottom: '1px solid var(--gray-200)' } },
+      uploadTab('files', 'Subir archivos'), uploadTab('air', 'Desde el aire'));
+    const cardKids = [tabs, ...(mode === 'air' ? buildAirCardKids() : buildFilesCardKids())];
 
     const card = h('div', { style: {
       width: '560px', maxWidth: '100%', background: '#fff', border: '1px solid var(--gray-200)',
@@ -388,7 +487,7 @@
       audios.length ? fileList : null,
       h('div', { style: { display: 'flex', justifyContent: 'center', gap: '10px', marginTop: '24px' } },
         err ? h('div', { class: 'tb-btn', onClick: goUpload, style: { display: 'inline-flex', alignItems: 'center', padding: '9px 16px', border: '1px solid var(--gray-300)', borderRadius: '6px', fontSize: '14px', fontWeight: '600', color: 'var(--gray-700)', cursor: 'pointer', background: '#fff' } }, 'Volver') : null,
-        err ? h('div', { class: 'brand-add', onClick: confirmUpload, style: { display: 'inline-flex', alignItems: 'center', padding: '9px 16px', background: 'var(--brand-500)', color: '#fff', borderRadius: '6px', fontSize: '14px', fontWeight: '600', cursor: 'pointer' } }, 'Reintentar') : null,
+        err ? h('div', { class: 'brand-add', onClick: (state.uploadMode === 'air' ? confirmFromLogger : confirmUpload), style: { display: 'inline-flex', alignItems: 'center', padding: '9px 16px', background: 'var(--brand-500)', color: '#fff', borderRadius: '6px', fontSize: '14px', fontWeight: '600', cursor: 'pointer' } }, 'Reintentar') : null,
       ),
     );
 
@@ -969,6 +1068,73 @@
     };
     state._pollT = setTimeout(tick, 2500);
   }
+  /* ---------------- cargar desde el aire (logger HDX) ---------------- */
+  function secToHHMM(s) {
+    s = ((Math.round(s) % 86400) + 86400) % 86400;
+    return String(Math.floor(s / 3600)).padStart(2, '0') + ':' + String(Math.floor((s % 3600) / 60)).padStart(2, '0');
+  }
+  function fmtDur(s) {
+    s = Math.max(0, Math.round(s));
+    const hh = Math.floor(s / 3600), mm = Math.round((s % 3600) / 60);
+    return hh ? (hh + 'h' + (mm ? ' ' + mm + 'm' : '')) : (mm + 'm');
+  }
+
+  async function loadLoggerRadios() {
+    if (state.loggerRadios) return;
+    try {
+      const res = await fetch(API_BASE + '/api/logger/radios');
+      const data = await res.json();
+      if (res.ok && Array.isArray(data.loggers) && data.loggers.length) {
+        state.loggerRadios = data.loggers;
+        if (!data.loggers.some(r => r.id === state.loggerRadio)) state.loggerRadio = data.loggers[0].id;
+        if (state.view === 'upload' && state.uploadMode === 'air') renderApp();
+      }
+    } catch (_) { /* el selector queda con el default (Mitre) */ }
+  }
+
+  async function loadLoggerPreview() {
+    if (!state.loggerDate || !state.loggerFrom || !state.loggerTo) {
+      state.loggerError = 'Completá radio, fecha, desde y hasta.'; state.loggerPreview = null; renderApp(); return;
+    }
+    state.loggerError = ''; state.loggerPreview = null; state.loggerPreviewLoading = true; renderApp();
+    try {
+      const qs = new URLSearchParams({ radio: state.loggerRadio, date: state.loggerDate, from: state.loggerFrom, to: state.loggerTo }).toString();
+      const res = await fetch(API_BASE + '/api/logger/preview?' + qs);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+      if (!data.count) { state.loggerError = 'No se encontraron bloques del aire para esa franja.'; }
+      else { state.loggerPreview = data; }
+    } catch (e) {
+      state.loggerError = 'No se pudo consultar el aire: ' + e.message;
+    } finally {
+      state.loggerPreviewLoading = false; renderApp();
+    }
+  }
+
+  // Crea la sesión desde el aire: el backend baja los bloques y los transcribe (async).
+  async function confirmFromLogger() {
+    const prev = state.loggerPreview;
+    if (!prev || !prev.count) return;
+    const programName = 'Aire ' + (prev.label || state.loggerRadio) + ' ' + state.loggerDate + ' ' + state.loggerFrom + '-' + state.loggerTo;
+    Object.assign(state, { view: 'processing', processingError: null, sessionId: null, fileName: programName, pendingAudios: [] });
+    clearTimeout(state._pollT);
+    renderApp();
+    try {
+      const res = await fetch(API_BASE + '/api/sessions/from-logger', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ radio: state.loggerRadio, date: state.loggerDate, from: state.loggerFrom, to: state.loggerTo }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+      state.sessionId = data.id;
+      try { localStorage.setItem('vm_lastSession', data.id); } catch (_) {}
+      pollProcessing(data.id);
+    } catch (e) {
+      state.processingError = 'No se pudo cargar desde el aire: ' + e.message;
+      renderApp();
+    }
+  }
+
   function loadSample() {
     if (audio) { audio.pause(); audio.currentTime = 0; }
     segGate = null; styledActive = -1; lastScrolled = -1; nextColor = 0;
