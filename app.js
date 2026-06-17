@@ -371,7 +371,20 @@
     width: '100%', padding: '9px 11px', border: '1px solid var(--gray-300)', borderRadius: '6px',
     fontFamily: 'var(--font-sans)', fontSize: '14px', color: 'var(--gray-800)', outline: 'none', background: '#fff',
   };
-  function clearLoggerPreview() { state.loggerPreview = null; state.loggerError = ''; }
+  // Invalida el preview SIN reconstruir el formulario. Clave: reconstruir el form
+  // (renderApp) mientras tipeás la hora destruye el <input> enfocado y se pierde el
+  // foco/cursor → por eso los inputs de abajo NO llaman renderApp, sólo airTouch().
+  function airSetSubmit(on) {
+    const b = refs.airSubmit; if (!b) return;
+    b.style.background = on ? 'var(--brand-500)' : 'var(--gray-200)';
+    b.style.color = on ? '#fff' : 'var(--gray-400)';
+    b.style.cursor = on ? 'pointer' : 'not-allowed';
+  }
+  function airTouch() {
+    state.loggerPreview = null; state.loggerError = '';
+    if (refs.airStatus) refs.airStatus.replaceChildren();
+    airSetSubmit(false);
+  }
 
   function buildAirCardKids() {
     const radios = state.loggerRadios || [{ id: 'mitre', label: 'Radio Mitre' }];
@@ -379,35 +392,31 @@
     const loading = state.loggerPreviewLoading;
     const canSubmit = !!(prev && prev.count) && !loading;
 
-    const radioSel = h('select', { style: airInputStyle, onChange: (e) => { state.loggerRadio = e.target.value; clearLoggerPreview(); renderApp(); } },
+    // Inputs: actualizan el estado en cada edición SIN renderApp (no se pierde el foco).
+    const onEdit = (key) => (e) => { state[key] = e.target.value; airTouch(); };
+    const radioSel = h('select', { style: airInputStyle, onChange: (e) => { state.loggerRadio = e.target.value; airTouch(); } },
       ...radios.map(r => h('option', { value: r.id, selected: state.loggerRadio === r.id }, r.label)));
     const dateIn = h('input', { type: 'date', value: state.loggerDate || '', style: airInputStyle,
-      onChange: (e) => { state.loggerDate = e.target.value; clearLoggerPreview(); renderApp(); } });
-    const fromIn = h('input', { type: 'time', value: state.loggerFrom || '', style: airInputStyle,
-      onChange: (e) => { state.loggerFrom = e.target.value; clearLoggerPreview(); renderApp(); } });
-    const toIn = h('input', { type: 'time', value: state.loggerTo || '', style: airInputStyle,
-      onChange: (e) => { state.loggerTo = e.target.value; clearLoggerPreview(); renderApp(); } });
+      onInput: onEdit('loggerDate'), onChange: onEdit('loggerDate') });
+    const fromIn = h('input', { type: 'time', step: '60', value: state.loggerFrom || '', style: airInputStyle,
+      onInput: onEdit('loggerFrom'), onChange: onEdit('loggerFrom') });
+    const toIn = h('input', { type: 'time', step: '60', value: state.loggerTo || '', style: airInputStyle,
+      onInput: onEdit('loggerTo'), onChange: onEdit('loggerTo') });
 
-    const kids = [
-      h('div', { style: { fontSize: '21px', fontWeight: '700', color: 'var(--gray-800)' } }, 'Cargar desde el aire'),
-      h('div', { style: { fontSize: '14px', color: 'var(--gray-600)', marginTop: '6px', lineHeight: '1.5' } },
-        'Elegí radio, fecha y franja horaria. Buscamos en el aire grabado los bloques que la cubren y los transcribimos. Se bajan bloques completos (puede haber audio antes y después de tu franja). Máximo 6 horas.'),
-      h('div', { style: { display: 'flex', gap: '12px', marginTop: '20px' } }, airField('Radio', radioSel), airField('Fecha', dateIn)),
-      h('div', { style: { display: 'flex', gap: '12px', marginTop: '14px' } }, airField('Desde', fromIn), airField('Hasta', toIn)),
-    ];
-
+    // Zona de estado (error o resumen del preview); airTouch la vacía sin reconstruir el form.
+    const statusWrap = h('div', {});
+    refs.airStatus = statusWrap;
     if (state.loggerError) {
-      kids.push(h('div', { style: {
+      statusWrap.appendChild(h('div', { style: {
         marginTop: '14px', padding: '10px 12px', background: '#FFF5F5', border: '1px solid #FEB2B2',
         borderRadius: '6px', fontSize: '13px', color: 'var(--red-600)',
       } }, state.loggerError));
-    }
-    if (prev && prev.count) {
+    } else if (prev && prev.count) {
       const blocks = prev.blocks || [];
       const last = blocks[blocks.length - 1];
       const coverFrom = blocks.length ? secToHHMM(blocks[0].startSec) : '';
       const coverTo = last ? secToHHMM(last.startSec + last.durationSec) : '';
-      kids.push(h('div', { style: {
+      statusWrap.appendChild(h('div', { style: {
         marginTop: '16px', padding: '12px 14px', background: 'var(--brand-50)', border: '1px solid var(--brand-100)',
         borderRadius: '8px', fontSize: '13px', color: 'var(--gray-700)', lineHeight: '1.6',
       } },
@@ -417,23 +426,35 @@
       ));
     }
 
-    kids.push(h('div', { style: {
-      display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px',
-      marginTop: '24px', paddingTop: '20px', borderTop: '1px solid var(--gray-100)',
-    } },
-      h('div', { class: 'link-sample', onClick: loading ? null : loadLoggerPreview, style: {
-        display: 'inline-flex', alignItems: 'center', gap: '7px', padding: '9px 16px', borderRadius: '6px',
-        fontSize: '14px', fontWeight: '600', border: '1px solid var(--gray-300)', background: '#fff',
-        color: 'var(--gray-700)', cursor: loading ? 'wait' : 'pointer',
-      } }, svg(I.search2 || I.search), loading ? 'Buscando…' : 'Buscar bloques'),
-      h('div', { class: 'confirm-btn' + (canSubmit ? ' ready' : ''), onClick: canSubmit ? confirmFromLogger : null, style: {
+    const submitBtn = h('div', { class: 'confirm-btn' + (canSubmit ? ' ready' : ''),
+      onClick: () => { if (state.loggerPreview && state.loggerPreview.count && !state.loggerPreviewLoading) confirmFromLogger(); },
+      style: {
         display: 'inline-flex', alignItems: 'center', gap: '7px', padding: '9px 18px', borderRadius: '6px',
         fontSize: '14px', fontWeight: '600',
         background: canSubmit ? 'var(--brand-500)' : 'var(--gray-200)', color: canSubmit ? '#fff' : 'var(--gray-400)',
         cursor: canSubmit ? 'pointer' : 'not-allowed',
-      } }, svg(I.upload), 'Transcribir y cargar'),
-    ));
-    return kids;
+      } }, svg(I.upload), 'Transcribir y cargar');
+    refs.airSubmit = submitBtn;
+
+    return [
+      h('div', { style: { fontSize: '21px', fontWeight: '700', color: 'var(--gray-800)' } }, 'Cargar desde el aire'),
+      h('div', { style: { fontSize: '14px', color: 'var(--gray-600)', marginTop: '6px', lineHeight: '1.5' } },
+        'Elegí radio, fecha y franja horaria. Buscamos en el aire grabado los bloques que la cubren y los transcribimos. Se bajan bloques completos (puede haber audio antes y después de tu franja). Máximo 6 horas.'),
+      h('div', { style: { display: 'flex', gap: '12px', marginTop: '20px' } }, airField('Radio', radioSel), airField('Fecha', dateIn)),
+      h('div', { style: { display: 'flex', gap: '12px', marginTop: '14px' } }, airField('Desde', fromIn), airField('Hasta', toIn)),
+      statusWrap,
+      h('div', { style: {
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px',
+        marginTop: '24px', paddingTop: '20px', borderTop: '1px solid var(--gray-100)',
+      } },
+        h('div', { class: 'link-sample', onClick: loading ? null : loadLoggerPreview, style: {
+          display: 'inline-flex', alignItems: 'center', gap: '7px', padding: '9px 16px', borderRadius: '6px',
+          fontSize: '14px', fontWeight: '600', border: '1px solid var(--gray-300)', background: '#fff',
+          color: 'var(--gray-700)', cursor: loading ? 'wait' : 'pointer',
+        } }, svg(I.search), loading ? 'Buscando…' : 'Buscar bloques'),
+        submitBtn,
+      ),
+    ];
   }
 
   function buildUpload() {
