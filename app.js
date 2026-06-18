@@ -503,10 +503,14 @@
       setTimeout(() => { const t = refs.tabEls.find(b => b.getAttribute('aria-selected') === 'true'); if (t) t.focus(); }, 0);
     }
 
+    // OJO: centrar con align-items/justify-content acá rompe el scroll cuando el
+    // contenido es más alto que el viewport (al acumularse transcripciones): el tope
+    // de la tarjeta queda por encima del borde y el navegador no deja scrollear hacia
+    // arriba. `margin: auto` centra cuando sobra espacio y colapsa a 0 al desbordar.
     return h('div', { style: {
-      flex: '1', minHeight: '0', display: 'flex', alignItems: 'center', justifyContent: 'center',
+      flex: '1', minHeight: '0', display: 'flex',
       background: 'var(--gray-50)', padding: '40px', overflow: 'auto',
-    } }, h('div', { style: { display: 'flex', flexDirection: 'column', alignItems: 'center' } }, card, recentWrap));
+    } }, h('div', { style: { margin: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'center' } }, card, recentWrap));
   }
 
   /* ---------------- processing view (transcribiendo) ---------------- */
@@ -523,7 +527,7 @@
     )));
 
     const card = h('div', { style: {
-      width: '520px', maxWidth: '100%', background: '#fff', border: '1px solid var(--gray-200)',
+      margin: 'auto', width: '520px', maxWidth: '100%', background: '#fff', border: '1px solid var(--gray-200)',
       borderRadius: '10px', boxShadow: 'var(--shadow-md)', padding: '34px 30px', textAlign: 'center',
     } },
       err
@@ -539,8 +543,10 @@
       ),
     );
 
+    // Centrado vía margin:auto en la card (no align/justify-center): así no se corta
+    // el tope cuando la lista de archivos crece y el contenido desborda. Ver buildUpload.
     return h('div', { style: {
-      flex: '1', minHeight: '0', display: 'flex', alignItems: 'center', justifyContent: 'center',
+      flex: '1', minHeight: '0', display: 'flex',
       background: 'var(--gray-50)', padding: '40px', overflow: 'auto',
     } }, card);
   }
