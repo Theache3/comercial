@@ -22,6 +22,15 @@
 - **Puente a HDX:** HDX vive en la red corp y solo es alcanzable por el túnel del EC2 de **cronograma**.
   Se agregaron endpoints `/api/hdx/logger*` en cronograma (token propio) y comercial los consume por
   HTTPS (`server/hdx-bridge.js`). Config: `LOGGER_BRIDGE_URL` / `LOGGER_BRIDGE_TOKEN` en `server/.env`.
+- **Descargas resilientes:** si el túnel cronograma↔HDX corta un bloque a mitad (`socket hang up` /
+  ECONNRESET / timeout / 5xx), se **reintenta ese bloque con backoff** (hasta 3 intentos) en vez de
+  tirar abajo toda la franja por un corte transitorio. Los errores reales (4xx, bloque inexistente)
+  no se reintentan.
+- **Logging de diagnóstico** en la descarga: cada fallo identifica el **hop** que cortó
+  (`connect` / `timeout` / `upstream HTTP xxx` / `stream`) + status, headers y body de cronograma +
+  bytes recibidos y tiempo — así se distingue si falló la conexión a cronograma o el túnel
+  cronograma↔HDX (el `socket hang up` típico llega como `[upstream 502]`, conexión sana). También
+  detecta descargas **incompletas** (content-length no cuadra) y las reintenta.
 
 ## v1.0 — 2026-06-16
 
